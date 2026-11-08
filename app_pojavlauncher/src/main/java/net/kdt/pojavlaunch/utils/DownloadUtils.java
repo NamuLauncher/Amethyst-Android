@@ -8,92 +8,63 @@ import java.io.*;
 import java.net.*;
 import java.nio.charset.*;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
 
 import net.kdt.pojavlaunch.*;
-import org.apache.commons.io.*;
 
 @SuppressWarnings("IOStreamConstructor")
 public class DownloadUtils {
     public static final String USER_AGENT = Tools.APP_NAME;
-    private static final int TIME_OUT = 10000;
 
     public static void download(String url, OutputStream os) throws IOException {
         download(new URL(url), os);
     }
 
     public static void download(URL url, OutputStream os) throws IOException {
-        InputStream is = null;
-        try {
-            // System.out.println("Connecting: " + url.toString());
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestProperty("User-Agent", USER_AGENT);
-            conn.setConnectTimeout(TIME_OUT);
-            conn.setReadTimeout(TIME_OUT);
-            conn.setDoInput(true);
-            conn.connect();
-            if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
-                throw new IOException("Server returned HTTP " + conn.getResponseCode()
-                        + ": " + conn.getResponseMessage());
-            }
-            is = conn.getInputStream();
-            IOUtils.copy(is, os);
-        } catch (IOException e) {
-            throw new IOException("Unable to download from " + url, e);
-        } finally {
-            if (is != null) {
-                try {
-                    is.close();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        }
+        InterruptibleDownload.download(
+                url,
+                os,
+                new byte[65536],
+                USER_AGENT,
+                null
+        );
     }
 
     public static String downloadString(String url) throws IOException {
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        download(url, bos);
-        bos.close();
-        return new String(bos.toByteArray(), StandardCharsets.UTF_8);
-    }
-
-    public static void downloadFile(String url, File out) throws IOException {
-        FileUtils.ensureParentDirectory(out);
-        try (FileOutputStream fileOutputStream = new FileOutputStream(out)) {
-            download(url, fileOutputStream);
-        } catch (IOException e) {
-            if (out.length() < 1) { // Only delete it if file is 0 bytes cause this file might already be downloaded and something else went wrong.
-                Log.i("DownloadUtils", "Cleaning up failed download: " + out.getAbsolutePath());
-                out.delete();
-                throw e;
-            }
+        try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            download(url, output);
+            return new String(output.toByteArray(), StandardCharsets.UTF_8);
         }
     }
 
-    public static void downloadFileMonitored(String urlInput, File outputFile, @Nullable byte[] buffer,
-                                             Tools.DownloaderFeedback monitor) throws IOException {
-        FileUtils.ensureParentDirectory(outputFile);
+    public static void downloadFile(String url, File output) throws IOException {
+        InterruptibleDownload.downloadFile(
+                url,
+                output,
+                new byte[65536],
+                USER_AGENT,
+                null
+        );
+    }
 
-        HttpURLConnection conn = (HttpURLConnection) new URL(urlInput).openConnection();
-        conn.setConnectTimeout(TIME_OUT);
-        conn.setReadTimeout(TIME_OUT);
-        InputStream readStr = conn.getInputStream();
-        try (FileOutputStream fos = new FileOutputStream(outputFile)) {
-            int current;
-            int overall = 0;
-            int length = conn.getContentLength();
+    public static void downloadFileMonitored(
+            String url,
+            File output,
+            @Nullable byte[] buffer,
+            Tools.DownloaderFeedback monitor
+    ) throws IOException {
+        byte[] transferBuffer = buffer == null ? new byte[65536] : buffer;
+        InterruptibleDownload.downloadFile(
+                url,
+                output,
+                transferBuffer,
+                USER_AGENT,
+                monitor::updateProgress
+        );
+    }
 
-            if (buffer == null) buffer = new byte[65535];
-
-            while ((current = readStr.read(buffer)) != -1) {
-                overall += current;
-                fos.write(buffer, 0, current);
-                monitor.updateProgress(overall, length);
-            }
-            conn.disconnect();
-        } catch (IOException e) {
-            throw new IOException("Unable to download from " + urlInput, e);
-        }
+    public static void throwIfInterrupted() throws InterruptedIOException {
+        InterruptibleDownload.checkInterrupted();
     }
 
     public static <T> T downloadStringCached(String url, String cacheName, ParseCallback<T> parseCallback) throws IOException, ParseException{
@@ -134,7 +105,7 @@ public class DownloadUtils {
     private static <T> T downloadFile(Callable<T> downloadFunction) throws IOException{
         try {
             return downloadFunction.call();
-        } catch (IOException e){
+        } catch (IOException | CancellationException e){
             throw e;
         }
         catch (Exception e) {
@@ -147,6 +118,7 @@ public class DownloadUtils {
     }
 
     public static <T> T ensureSha1(File outputFile, @Nullable String sha1, Callable<T> downloadFunction) throws IOException {
+        throwIfInterrupted();
         // Skip if needed
         if(sha1 == null) {
             // If the file exists and we don't know it's SHA1, don't try to redownload it.
@@ -156,11 +128,14 @@ public class DownloadUtils {
 
         int attempts = 0;
         boolean fileOkay = verifyFile(outputFile, sha1);
+        throwIfInterrupted();
         T result = null;
         while (attempts < 5 && !fileOkay){
+            throwIfInterrupted();
             attempts++;
             downloadFile(downloadFunction);
             fileOkay = verifyFile(outputFile, sha1);
+            throwIfInterrupted();
         }
         if(!fileOkay) throw new SHA1VerificationException("SHA1 verifcation failed after 5 download attempts");
         return result;
@@ -173,14 +148,7 @@ public class DownloadUtils {
      * @throws IOException if an I/O error occurs.
      */
     public static long getContentLength(String url) throws IOException {
-        HttpURLConnection urlConnection = (HttpURLConnection) new URL(url).openConnection();
-        urlConnection.setRequestMethod("HEAD");
-        urlConnection.setDoInput(false);
-        urlConnection.setDoOutput(false);
-        urlConnection.connect();
-        int responseCode = urlConnection.getResponseCode();
-        if(responseCode >= 200 && responseCode <= 299) return urlConnection.getContentLength();
-        return -1;
+        return InterruptibleDownload.contentLength(url, USER_AGENT);
     }
 
     public interface ParseCallback<T> {

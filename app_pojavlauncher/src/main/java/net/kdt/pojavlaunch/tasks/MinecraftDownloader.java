@@ -38,9 +38,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -129,19 +127,34 @@ public class MinecraftDownloader {
             Consumer<GamePreparationProgress> progress,
             AsyncMinecraftDownloader.DoneListener listener
     ) {
-        hostProgress = progress;
-        Tools.switchDemo(Tools.isDemoProfile(activity));
         sExecutorService.execute(() -> {
             try {
-                if (!Tools.isOnline(activity)) throw new IOException("No network connection");
-                downloadGame(activity, null, version);
+                prepareForHost(activity, version, progress);
                 listener.onDownloadDone();
             } catch (Exception failure) {
                 listener.onDownloadFailed(failure);
-            } finally {
-                ProgressLayout.clearProgress(ProgressLayout.DOWNLOAD_MINECRAFT);
             }
         });
+    }
+
+    /** 호출한 worker와 모든 다운로드 worker가 끝난 뒤에만 반환한다. */
+    public void prepareForHost(
+            Activity activity,
+            String version,
+            Consumer<GamePreparationProgress> progress
+    ) throws Exception {
+        hostProgress = progress;
+        DownloadUtils.throwIfInterrupted();
+        Tools.switchDemo(Tools.isDemoProfile(activity));
+        try {
+            if (!Tools.isOnline(activity)) {
+                throw new IOException("No network connection");
+            }
+            downloadGame(activity, null, version);
+            DownloadUtils.throwIfInterrupted();
+        } finally {
+            ProgressLayout.clearProgress(ProgressLayout.DOWNLOAD_MINECRAFT);
+        }
     }
 
     /**
@@ -169,36 +182,21 @@ public class MinecraftDownloader {
 
         downloadAndProcessMetadata(activity, verInfo, versionName);
 
-        ArrayBlockingQueue<Runnable> taskQueue =
-                new ArrayBlockingQueue<>(Math.max(1, mScheduledDownloadTasks.size()), false);
-        ThreadPoolExecutor downloaderPool =
-                new ThreadPoolExecutor(4, 4, 500, TimeUnit.MILLISECONDS, taskQueue);
-
-        // I have tried pre-filling the queue directly instead of doing this, but it didn't work.
-        // What a shame.
-        for(DownloaderTask scheduledTask : mScheduledDownloadTasks) downloaderPool.execute(scheduledTask);
-        downloaderPool.shutdown();
-
         reportDownloadProgress(0);
-        try {
-            while (mDownloaderThreadException.get() == null &&
-                    !downloaderPool.awaitTermination(33, TimeUnit.MILLISECONDS)) {
-                double speed = speedCalculator.feed(mInternetUsageCounter.get()) / ONE_MEGABYTE;
-                reportDownloadProgress(speed);
-            }
-            Exception thrownException = mDownloaderThreadException.get();
-            if(thrownException != null) {
-                throw thrownException;
-            } else {
-                reportDownloadProgress(0);
-                ensureJarFileCopy();
-                extractNatives(versionName);
-            }
-        }catch (InterruptedException e) {
-            // Interrupted while waiting, which means that the download was cancelled.
-            // Kill all downloading threads immediately, and ignore any exceptions thrown by them
-            downloaderPool.shutdownNow();
-        }
+        DownloadTaskGroup.run(
+                mScheduledDownloadTasks,
+                mDownloaderThreadException,
+                () -> {
+                    double speed = speedCalculator.feed(mInternetUsageCounter.get()) / ONE_MEGABYTE;
+                    reportDownloadProgress(speed);
+                }
+        );
+        DownloadUtils.throwIfInterrupted();
+        reportDownloadProgress(0);
+        // JAR 복사와 네이티브 압축 해제는 중간 취소를 지원하지 않는다.
+        reportNativeExtraction(0, mDeclaredNatives.size());
+        ensureJarFileCopy();
+        extractNatives(versionName);
     }
 
     private void reportUnknown(GamePreparationProgress.Stage stage) {
@@ -402,6 +400,7 @@ public class MinecraftDownloader {
         // Only attempt to check size if we still use the size counter and didn't switch to file counter.
         if(size <= 0 && !mUseFileCounter) {
             size = DownloadMirror.getContentLengthMirrored(downloadClass, url);
+            DownloadUtils.throwIfInterrupted();
         }
         if(size < 0) {
             // If we were unable to get the content length ourselves, we automatically fall back
@@ -603,6 +602,7 @@ public class MinecraftDownloader {
                 // The hash is a 40-byte download.
                 mInternetUsageCounter.getAndAdd(40);
             } catch (IOException e) {
+                DownloadUtils.throwIfInterrupted();
                 Log.i("MinecraftDownloader", "Failed to download hash", e);
                 if (cacheFile.exists() && new BufferedReader(new FileReader(cacheFile)).readLine() == null) {
                     Log.i("MinecraftDownloader", "Deleting failed hash download from cache: " + cacheFile);
@@ -627,15 +627,17 @@ public class MinecraftDownloader {
             try {
                 runCatching();
             }catch (Exception e) {
-                mDownloaderThreadException.set(e);
+                mDownloaderThreadException.compareAndSet(null, e);
             }
         }
 
         private void runCatching() throws Exception {
+            DownloadUtils.throwIfInterrupted();
             if(mDownloadClass == DownloadMirror.DOWNLOAD_CLASS_LIBRARIES && !Tools.isValidString(mTargetSha1)) {
                 // If we're downloading a library, try to get sha1 since it might be available as a file
                 tryGetLibrarySha1();
             }
+            DownloadUtils.throwIfInterrupted();
             if(Tools.isValidString(mTargetSha1)) {
                 verifyFileSha1();
             }else {
@@ -663,9 +665,13 @@ public class MinecraftDownloader {
                             getLocalBuffer(), this);
                     return null;
                 });
-            }catch (Exception e) {
-                if(!mSkipIfFailed) throw e;
+            } catch (Exception e) {
+                if (!mSkipIfFailed || e instanceof CancellationException) {
+                    throw e;
+                }
+                DownloadUtils.throwIfInterrupted();
             }
+            DownloadUtils.throwIfInterrupted();
             mProcessedFileCounter.incrementAndGet();
         }
 

@@ -9,6 +9,7 @@ import android.os.Looper;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import net.kdt.pojavlaunch.MainActivity;
 import net.kdt.pojavlaunch.PojavApplication;
 import net.kdt.pojavlaunch.PojavProfile;
@@ -18,7 +19,6 @@ import net.kdt.pojavlaunch.extra.ExtraConstants;
 import net.kdt.pojavlaunch.extra.ExtraCore;
 import net.kdt.pojavlaunch.prefs.LauncherPreferences;
 import net.kdt.pojavlaunch.tasks.AsyncAssetManager;
-import net.kdt.pojavlaunch.tasks.AsyncMinecraftDownloader;
 import net.kdt.pojavlaunch.tasks.AsyncVersionList;
 import net.kdt.pojavlaunch.tasks.MinecraftDownloader;
 import net.kdt.pojavlaunch.value.MinecraftAccount;
@@ -34,6 +34,15 @@ public final class AmethystRuntime {
 
     public interface PreparationListener extends Completion {
         void onProgress(GamePreparationProgress progress);
+
+        default void onCancelled() {
+            onFailure(new CancellationException("게임 준비가 취소됐습니다"));
+        }
+    }
+
+    public interface PreparationRequest {
+        /** 수락 후에도 실제 작업 종료를 알리는 onCancelled까지 기다려야 한다. */
+        boolean cancel();
     }
 
     private AmethystRuntime() {}
@@ -129,79 +138,84 @@ public final class AmethystRuntime {
             String[] jvmArguments,
             PreparationListener listener
     ) {
-        Handler main = new Handler(Looper.getMainLooper());
-        PreparationCallbacks callbacks = new PreparationCallbacks(
-                action -> main.post(action),
+        startPreparation(
+                activity,
+                directory,
+                version,
+                renderer,
+                memoryMb,
+                gameArguments,
+                jvmArguments,
                 listener
         );
-        try {
+    }
+
+    /** 콜백은 메인 스레드에서 전달하며 취소 완료 전에는 다음 준비를 시작하지 않는다. */
+    public static PreparationRequest startPreparation(
+            Activity activity,
+            File directory,
+            String version,
+            String renderer,
+            int memoryMb,
+            String[] gameArguments,
+            String[] jvmArguments,
+            PreparationListener listener
+    ) {
+        Handler main = new Handler(Looper.getMainLooper());
+        PreparationTask request = new PreparationTask(action -> main.post(action), listener);
+        String[] requestedGameArguments = gameArguments == null ? null : gameArguments.clone();
+        String[] requestedJvmArguments = jvmArguments == null ? null : jvmArguments.clone();
+        request.start(PojavApplication.sExecutorService, () -> {
+            request.progress(new GamePreparationProgress(
+                    GamePreparationProgress.Stage.COMPONENTS,
+                    GamePreparationProgress.Unit.UNKNOWN,
+                    0,
+                    -1
+            ));
             initialize(activity);
             if (!directory.isDirectory() && !directory.mkdirs()) {
                 throw new IllegalStateException("Cannot create game directory");
             }
-            activity.getSharedPreferences("amethyst_runtime", Context.MODE_PRIVATE).edit()
+            activity.getSharedPreferences("amethyst_runtime", Context.MODE_PRIVATE)
+                    .edit()
                     .putString("gameDirectory", directory.getAbsolutePath())
                     .commit();
             LauncherPreferences.loadPreferences(activity);
             LauncherProfiles.load();
             String profileId = UUID.nameUUIDFromBytes(directory.getAbsolutePath()
-                    .getBytes(StandardCharsets.UTF_8)).toString();
+                    .getBytes(StandardCharsets.UTF_8))
+                    .toString();
             MinecraftProfile profile = new MinecraftProfile();
             profile.name = directory.getName();
             profile.gameDir = directory.getAbsolutePath();
             profile.lastVersionId = version;
             profile.pojavRendererName = renderer;
-            profile.extraGameArguments = gameArguments == null ? null : gameArguments.clone();
-            if (jvmArguments != null) {
-                profile.extraJvmArguments = jvmArguments.clone();
-            }
+            profile.extraGameArguments = requestedGameArguments;
+            profile.extraJvmArguments = requestedJvmArguments;
             LauncherProfiles.mainProfileJson.profiles.put(profileId, profile);
             LauncherProfiles.write();
-            LauncherPreferences.DEFAULT_PREF.edit()
+            LauncherPreferences.DEFAULT_PREF
+                    .edit()
                     .putString(LauncherPreferences.PREF_KEY_CURRENT_PROFILE, profileId)
                     .putInt("allocation", memoryMb)
                     .commit();
             LauncherPreferences.loadPreferences(activity);
-            PojavApplication.sExecutorService.execute(() -> {
-                try {
-                    AsyncAssetManager.prepareForHost(activity, callbacks::progress);
-                    callbacks.progress(new GamePreparationProgress(
-                            GamePreparationProgress.Stage.VERSION_LIST,
-                            GamePreparationProgress.Unit.UNKNOWN,
-                            0,
-                            -1
-                    ));
-                    new AsyncVersionList().getVersionList(versions -> {
-                        if (versions == null) {
-                            callbacks.failure(new IllegalStateException("Cannot load Minecraft versions"));
-                            return;
-                        }
-                        ExtraCore.setValue(ExtraConstants.RELEASE_TABLE, versions);
-                        MinecraftDownloader downloader = new MinecraftDownloader();
-                        downloader.startForHost(
-                                activity,
-                                version,
-                                callbacks::progress,
-                                new AsyncMinecraftDownloader.DoneListener() {
-                                    @Override
-                                    public void onDownloadDone() {
-                                        callbacks.ready();
-                                    }
 
-                                    @Override
-                                    public void onDownloadFailed(Throwable failure) {
-                                        callbacks.failure(failure);
-                                    }
-                                }
-                        );
-                    }, false);
-                } catch (Throwable failure) {
-                    callbacks.failure(failure);
-                }
-            });
-        } catch (Throwable failure) {
-            callbacks.failure(failure);
-        }
+            AsyncAssetManager.prepareForHost(activity, request::progress);
+            request.progress(new GamePreparationProgress(
+                    GamePreparationProgress.Stage.VERSION_LIST,
+                    GamePreparationProgress.Unit.UNKNOWN,
+                    0,
+                    -1
+            ));
+            ExtraCore.setValue(
+                    ExtraConstants.RELEASE_TABLE,
+                    new AsyncVersionList().getVersionListForHost()
+            );
+            request.checkCancelled();
+            new MinecraftDownloader().prepareForHost(activity, version, request::progress);
+        });
+        return request;
     }
 
     public static java.util.Map<String, String> renderers(Context context) {
