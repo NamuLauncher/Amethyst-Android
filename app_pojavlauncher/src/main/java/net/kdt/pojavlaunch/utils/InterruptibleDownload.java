@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.function.BiConsumer;
+import java.util.function.LongConsumer;
 
 /** interrupt를 읽기 경계에서 확인하고 완전히 받은 파일만 게시한다. */
 final class InterruptibleDownload {
@@ -33,6 +34,24 @@ final class InterruptibleDownload {
             String userAgent,
             BiConsumer<Integer, Integer> progress
     ) throws IOException {
+        download(
+                url,
+                output,
+                buffer,
+                userAgent,
+                progress,
+                null
+        );
+    }
+
+    static void download(
+            URL url,
+            OutputStream output,
+            byte[] buffer,
+            String userAgent,
+            BiConsumer<Integer, Integer> progress,
+            LongConsumer receivedBytes
+    ) throws IOException {
         checkInterrupted();
         HttpURLConnection connection = openConnection(url, userAgent);
         try {
@@ -50,6 +69,10 @@ final class InterruptibleDownload {
                 while (true) {
                     checkInterrupted();
                     int count = input.read(buffer);
+                    // 읽은 뒤 쓰기나 취소가 실패해도 이미 수신한 본문은 계측에 포함한다.
+                    if (count > 0 && receivedBytes != null) {
+                        receivedBytes.accept(count);
+                    }
                     checkInterrupted();
                     if (count < 0) {
                         break;
@@ -79,6 +102,24 @@ final class InterruptibleDownload {
             String userAgent,
             BiConsumer<Integer, Integer> progress
     ) throws IOException {
+        downloadFile(
+                url,
+                destination,
+                buffer,
+                userAgent,
+                progress,
+                null
+        );
+    }
+
+    static void downloadFile(
+            String url,
+            File destination,
+            byte[] buffer,
+            String userAgent,
+            BiConsumer<Integer, Integer> progress,
+            LongConsumer receivedBytes
+    ) throws IOException {
         checkInterrupted();
         FileUtils.ensureParentDirectory(destination);
         Path temporary = Files.createTempFile(destination.getParentFile().toPath(), "download-", ".part");
@@ -89,7 +130,8 @@ final class InterruptibleDownload {
                         output,
                         buffer,
                         userAgent,
-                        progress
+                        progress,
+                        receivedBytes
                 );
             }
             checkInterrupted();

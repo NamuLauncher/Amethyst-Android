@@ -10,13 +10,16 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.Assert.*;
 
@@ -35,6 +38,117 @@ public class InterruptibleDownloadTest {
     @After
     public void stopServer() throws IOException {
         server.shutdown();
+    }
+
+    @Test
+    public void actualBodyReadsCountUnknownLengthAndIgnoreErrorBodies() throws Exception {
+        server.enqueue(new MockResponse()
+                .setChunkedBody("test body", 3));
+        AtomicLong received = new AtomicLong();
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        InterruptibleDownload.download(
+                server.url("/test.jar")
+                        .url(),
+                output,
+                new byte[4],
+                "TestRuntime",
+                null,
+                received::addAndGet
+        );
+        assertEquals(9, received.get());
+        assertArrayEquals("test body".getBytes(StandardCharsets.UTF_8), output.toByteArray());
+
+        server.enqueue(new MockResponse()
+                .setResponseCode(404)
+                .setBody("unread error body"));
+        assertThrows(IOException.class, () -> InterruptibleDownload.download(
+                server.url("/missing.jar")
+                        .url(),
+                output,
+                new byte[4],
+                "TestRuntime",
+                null,
+                received::addAndGet
+        ));
+        assertEquals(9, received.get());
+    }
+
+    @Test
+    public void failedPartialAttemptAndRetryAccumulateEveryActualReadOnce() throws Exception {
+        String body = "test body spanning several chunks";
+        server.enqueue(new MockResponse()
+                .setBody(body)
+                .setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY));
+        File target = directory.newFile("test.jar");
+        Files.write(target.toPath(), "previous".getBytes(StandardCharsets.UTF_8));
+        AtomicLong received = new AtomicLong();
+
+        assertThrows(IOException.class, () -> transferMeasured(target, received));
+        long partial = received.get();
+        assertTrue(partial > 0);
+        assertTrue(partial < body.length());
+        assertEquals("previous", read(target));
+        assertNoTemporaryFiles();
+
+        server.enqueue(new MockResponse()
+                .setBody(body));
+        transferMeasured(target, received);
+        assertEquals(partial + body.length(), received.get());
+        assertEquals(body, read(target));
+        assertEquals(2, server.getRequestCount());
+        assertNoTemporaryFiles();
+    }
+
+    @Test
+    public void bytesAlreadyReadRemainCountedWhenLocalWriteFails() throws Exception {
+        server.enqueue(new MockResponse()
+                .setBody("test data"));
+        AtomicLong received = new AtomicLong();
+        AtomicLong processed = new AtomicLong();
+        OutputStream failingOutput = new OutputStream() {
+            @Override
+            public void write(int value) throws IOException {
+                throw new IOException("test disk failure");
+            }
+        };
+        assertThrows(IOException.class, () -> InterruptibleDownload.download(
+                server.url("/test.jar")
+                        .url(),
+                failingOutput,
+                new byte[4],
+                "TestRuntime",
+                (completed, total) -> processed.set(completed),
+                received::addAndGet
+        ));
+
+        assertEquals(4, received.get());
+        assertEquals(0, processed.get());
+    }
+
+    @Test
+    public void cancellationAfterReadDoesNotUndoReceivedBytesOrWriteTheChunk() throws Exception {
+        server.enqueue(new MockResponse()
+                .setBody("test data"));
+        AtomicLong received = new AtomicLong();
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        try {
+            assertThrows(InterruptedIOException.class, () -> InterruptibleDownload.download(
+                    server.url("/test.jar")
+                        .url(),
+                    output,
+                    new byte[4],
+                    "TestRuntime",
+                    null,
+                    bytes -> {
+                        received.addAndGet(bytes);
+                        Thread.currentThread().interrupt();
+                    }
+            ));
+            assertEquals(4, received.get());
+            assertEquals(0, output.size());
+        } finally {
+            Thread.interrupted();
+        }
     }
 
     @Test
@@ -137,6 +251,17 @@ public class InterruptibleDownloadTest {
                 new byte[4],
                 "TestRuntime",
                 null
+        );
+    }
+
+    private void transferMeasured(File target, AtomicLong received) throws IOException {
+        InterruptibleDownload.downloadFile(
+                server.url("/test.jar").toString(),
+                target,
+                new byte[4],
+                "TestRuntime",
+                null,
+                received::addAndGet
         );
     }
 

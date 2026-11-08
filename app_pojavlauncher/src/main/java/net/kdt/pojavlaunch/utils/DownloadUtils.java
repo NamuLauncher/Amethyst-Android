@@ -9,6 +9,7 @@ import java.net.*;
 import java.nio.charset.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
+import java.util.function.LongConsumer;
 
 import net.kdt.pojavlaunch.*;
 
@@ -53,13 +54,31 @@ public class DownloadUtils {
             @Nullable byte[] buffer,
             Tools.DownloaderFeedback monitor
     ) throws IOException {
+        downloadFileMonitored(
+                url,
+                output,
+                buffer,
+                monitor,
+                null
+        );
+    }
+
+    /** 파일 응답 본문을 읽을 때마다 양수 바이트 증분을 전달한다. */
+    public static void downloadFileMonitored(
+            String url,
+            File output,
+            @Nullable byte[] buffer,
+            Tools.DownloaderFeedback monitor,
+            @Nullable LongConsumer receivedBytes
+    ) throws IOException {
         byte[] transferBuffer = buffer == null ? new byte[65536] : buffer;
         InterruptibleDownload.downloadFile(
                 url,
                 output,
                 transferBuffer,
                 USER_AGENT,
-                monitor::updateProgress
+                monitor::updateProgress,
+                receivedBytes
         );
     }
 
