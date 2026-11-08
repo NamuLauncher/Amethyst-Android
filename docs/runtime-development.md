@@ -44,3 +44,11 @@ GitHub Actions를 사용할 수 없는 동안 필요한 검증은 로컬에서 �
 호스트는 `AmethystRuntime.startPreparation` 또는 `prepareGame`의 `jvmArguments`로 `-Dlog4j.configurationFile=<경로>`를 전달할 수 있다. 게임 실행 인수를 조립할 때 호스트가 지정한 이 속성은 런타임·버전에서 선택한 기본 log4j 설정을 대체한다. 호스트 배열 안에 같은 속성이 여러 번 있으면 마지막 항목 하나를 남기며, 공백이 있는 경로도 인수 하나로 유지한다. `-Dlog4j.configurationFile` 또는 `-Dlog4j.configurationFile=`처럼 빈 값을 명시한 경우도 같은 규칙을 따른다.
 
 호스트가 해당 속성을 지정하지 않으면 기존 보안 XML 우선 선택을 유지한다. 다른 JVM 인수의 값·순서나 `-Dlog4j2.formatMsgNoLookups=true` 보정은 이 처리에서 바꾸지 않는다. 이 규칙의 대상은 런타임·버전 인수와 호스트 배열이며, 별도의 upstream 사용자 JVM 문자열 전체를 정리하는 기능은 아니다. 설정 파일의 내용·설치·게임 버전 호환성은 호스트가 관리하며, 인수 결합 테스트만으로 실제 게임 로깅 검증을 대신하지 않는다.
+
+## 호스트 서버 접속 인수
+
+호스트는 기존 `AmethystRuntime.startPreparation` 또는 `prepareGame`의 `gameArguments`에 `--server`, 호스트 이름, `--port`, 포트를 배열 요소로 전달할 수 있다. 포트를 생략한 기존 `--server` 요청도 유지하며 기본 포트는 25565다. 실제 실행 시 부모와 병합된 게임 메타데이터의 `arguments.game`에 `--quickPlayMultiplayer`가 있으면 이 한 쌍을 `--quickPlayMultiplayer`, `host:port`로 변환한다. IPv6는 `[address]:port`로 전달한다. 해당 기능이 없으면 기존 server/port 인수를 유지한다. 로더 이름이나 릴리스·스냅샷 버전 문자열을 추측하지 않는다.
+
+기능 확인은 메타데이터의 직접 문자열 또는 feature 객체의 `value` 문자열/목록에서 정확한 인수 이름을 찾는다. 기존 게임 인수 조립기가 건너뛰는 feature 객체도 확인하지만, 모든 feature 규칙을 처리하는 범용 해석기는 추가하지 않는다. 이미 지정한 `--quickPlayMultiplayer`와 그 외 호스트 인수의 값·상대 순서는 유지한다. 호스트 접속 옵션의 중복, 값 누락, 서버 없는 port 지정, legacy와 modern의 동시 지정은 오류다. 포트는 1–65535이며 호스트는 URI host 구문에 맞는 DNS 이름 또는 IP 주소다.
+
+바로 접속 ON/OFF, 주소 선택·파싱, DNS SRV와 접속 실패 정책은 호스트에서 결정한다. 라이브러리는 접속 인수를 받지 않았을 때 새 주소를 만들어 넣지 않는다. 기존 준비 API·프로필 저장 형식은 유지하며 인수 테스트나 AAR 빌드로 실제 게임 접속 성공을 주장하지 않는다.
