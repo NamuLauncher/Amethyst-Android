@@ -559,9 +559,7 @@ public final class Tools {
         // We use a janky lwjgl setup. We don't want more people complaining it crashes.
         if (hasSodiumMod) javaArgList.add("-Dsodium.checks.issue2561=false");
         // 호스트 JVM 옵션은 기본 옵션 뒤, 메인 클래스와 게임 인자 앞에 둔다.
-        if (minecraftProfile.extraJvmArguments != null) {
-            java.util.Collections.addAll(javaArgList, minecraftProfile.extraJvmArguments);
-        }
+        HostJvmArguments.appendTo(javaArgList, minecraftProfile.extraJvmArguments);
         String errorFileArgument = RuntimeGameSession.errorFileArgument();
         if (errorFileArgument != null) {
             // 실행별 크래시 파일 위치가 앞선 사용자 JVM 설정보다 우선한다.
