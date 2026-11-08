@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:name="android.app.Application"
+        tools:replace="android:name"
+        tools:remove="android:process">
+        <service
+            android:name="net.kdt.pojavlaunch.runtime.RuntimeProbeService"
+            android:exported="false"
+            android:process=":game" />
+    </application>
+</manifest>

@@ -16,6 +16,7 @@ import androidx.core.app.NotificationCompat;
 import net.kdt.pojavlaunch.MainActivity;
 import net.kdt.pojavlaunch.R;
 import net.kdt.pojavlaunch.Tools;
+import net.kdt.pojavlaunch.runtime.RuntimeGameSession;
 import net.kdt.pojavlaunch.utils.NotificationUtils;
 
 import java.lang.ref.WeakReference;
@@ -32,6 +33,7 @@ public class GameService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if(intent != null && intent.getBooleanExtra("kill", false)) {
+            RuntimeGameSession.onUserStop();
             stopSelf();
             Process.killProcess(Process.myPid());
             return START_NOT_STICKY;
@@ -64,6 +66,7 @@ public class GameService extends Service {
     @Override
     public void onTaskRemoved(Intent rootIntent) {
         //At this point in time  only the game runs and the user poofed the window, time to die
+        RuntimeGameSession.onUserStop();
         stopSelf();
         Process.killProcess(Process.myPid());
     }

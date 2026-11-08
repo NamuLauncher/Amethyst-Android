@@ -112,11 +112,15 @@ _Noreturn void nominal_exit(int code, bool is_signal) {
         // I mean, if Zygote can do that, why can't I?
         killpg(getpgrp(), SIGTERM);
     }
-    if(code != 0) {
-        // Exit code 0 is pretty established as "eh it's fine"
-        // so only open the GUI if the code is != 0
-        (*env)->CallStaticVoidMethod(env, exitTrap_exitClass, exitTrap_staticMethod, exitTrap_ctx, code, is_signal);
-    }
+    // 정상 종료도 호스트에 전달하고 기존 오류 화면 여부는 Java 경계에서 결정한다.
+    (*env)->CallStaticVoidMethod(
+            env,
+            exitTrap_exitClass,
+            exitTrap_staticMethod,
+            exitTrap_ctx,
+            code,
+            is_signal
+    );
     // Delete the reference, not gonna need 'em later anyway
     (*env)->DeleteGlobalRef(env, exitTrap_ctx);
     (*env)->DeleteGlobalRef(env, exitTrap_exitClass);

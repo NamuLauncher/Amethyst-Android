@@ -7,7 +7,11 @@ import android.content.Intent;
 import android.os.Handler;
 import android.os.Looper;
 import java.io.File;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import net.kdt.pojavlaunch.MainActivity;
@@ -27,6 +31,8 @@ import net.kdt.pojavlaunch.value.launcherprofiles.MinecraftProfile;
 
 /** 호스트 앱과 Android 게임 실행 구현 사이의 공개 경계. */
 public final class AmethystRuntime {
+    public static final String ACTION_GAME_RUN_CHANGED = "net.kdt.pojavlaunch.runtime.GAME_RUN_CHANGED";
+    public static final String EXTRA_RUN_ID = "net.kdt.pojavlaunch.runtime.RUN_ID";
     public interface Completion {
         void onReady();
         void onFailure(Throwable failure);
@@ -241,5 +247,80 @@ public final class AmethystRuntime {
     public static void launchGame(Activity activity) {
         activity.startActivity(new Intent(activity, MainActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+    }
+
+    /** 실행마다 다른 ID와 비어 있는 앱 내부 폴더를 지정한다. 기존 실행으로 복귀할 때는 인자 없는 오버로드를 쓴다. */
+    public static void launchGame(Activity activity, String runId, File runDirectory) throws IOException {
+        if (isGameRunning(activity)) {
+            throw new IllegalStateException("게임이 이미 실행 중입니다");
+        }
+        File directory = privateRunDirectory(activity, runDirectory);
+        if (directory.exists()) {
+            String[] files = directory.list();
+            if (files == null || files.length != 0) {
+                throw new IOException("실행 기록 폴더는 비어 있어야 합니다");
+            }
+        }
+        GameRunStore runStore = GameRunStore.create(runId, directory, System.currentTimeMillis());
+        Intent intent = new Intent(activity, MainActivity.class)
+                .putExtra(EXTRA_RUN_ID, runId)
+                .putExtra(RuntimeGameSession.EXTRA_RUN_DIRECTORY, directory.getAbsolutePath());
+        try {
+            activity.startActivity(intent);
+        } catch (RuntimeException failure) {
+            new GameRunRecorder(runStore).failed(failure.getClass().getName(), System.currentTimeMillis());
+            throw failure;
+        }
+    }
+
+    /** 파일 부재는 null, 읽기 또는 형식 오류는 IOException으로 전달한다. */
+    public static GameRunSnapshot readGameRun(File runDirectory) throws IOException {
+        return new GameRunStore(runDirectory).read();
+    }
+
+    public static File gameLogFile(File runDirectory) {
+        return new GameRunStore(runDirectory).logFile();
+    }
+
+    /** Java 실패의 타입과 호출 프레임만 기록하며 예외 메시지·JVM 인자를 포함하지 않는다. */
+    public static File gameFailureFile(File runDirectory) {
+        return new GameRunStore(runDirectory).failureFile();
+    }
+
+    /** hs_err가 없는 종료는 빈 목록이며 폴더 조회 실패를 빈 목록으로 숨기지 않는다. */
+    public static List<File> gameCrashReports(File runDirectory) throws IOException {
+        List<File> reports = new ArrayList<>();
+        if (Files.notExists(runDirectory.toPath())) {
+            return reports;
+        }
+        try (java.util.stream.Stream<java.nio.file.Path> paths = Files.list(runDirectory.toPath())) {
+            paths.filter(path -> path.getFileName().toString().matches("hs_err_pid[0-9]+\\.log"))
+                    .sorted()
+                    .forEach(path -> reports.add(path.toFile()));
+        }
+        return reports;
+    }
+
+    /** 명령 전송 여부만 반환한다. 호스트는 STOPPED 기록과 실제 프로세스 종료를 확인해야 한다. */
+    public static boolean stopGame(Context context, String runId) {
+        if (runId == null || !runId.matches("[A-Za-z0-9_-]{1,128}")) {
+            throw new IllegalArgumentException("실행 ID가 올바르지 않습니다");
+        }
+        if (!isGameRunning(context)) {
+            return false;
+        }
+        context.sendBroadcast(new Intent(RuntimeGameSession.ACTION_STOP_GAME)
+                .setPackage(context.getPackageName())
+                .putExtra(EXTRA_RUN_ID, runId));
+        return true;
+    }
+
+    static File privateRunDirectory(Context context, File directory) throws IOException {
+        File resolved = directory.getCanonicalFile();
+        File privateRoot = context.getFilesDir().getCanonicalFile();
+        if (resolved.equals(privateRoot) || !resolved.toPath().startsWith(privateRoot.toPath())) {
+            throw new IOException("실행 기록은 앱 내부 하위 폴더에 저장해야 합니다");
+        }
+        return resolved;
     }
 }

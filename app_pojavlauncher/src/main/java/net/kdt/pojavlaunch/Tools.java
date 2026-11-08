@@ -65,6 +65,7 @@ import net.kdt.pojavlaunch.multirt.MultiRTUtils;
 import net.kdt.pojavlaunch.multirt.Runtime;
 import net.kdt.pojavlaunch.plugins.FFmpegPlugin;
 import net.kdt.pojavlaunch.prefs.LauncherPreferences;
+import net.kdt.pojavlaunch.runtime.RuntimeGameSession;
 import net.kdt.pojavlaunch.tasks.AsyncAssetManager;
 import net.kdt.pojavlaunch.utils.DateUtils;
 import net.kdt.pojavlaunch.utils.DownloadUtils;
@@ -560,6 +561,11 @@ public final class Tools {
         // 호스트 JVM 옵션은 기본 옵션 뒤, 메인 클래스와 게임 인자 앞에 둔다.
         if (minecraftProfile.extraJvmArguments != null) {
             java.util.Collections.addAll(javaArgList, minecraftProfile.extraJvmArguments);
+        }
+        String errorFileArgument = RuntimeGameSession.errorFileArgument();
+        if (errorFileArgument != null) {
+            // 실행별 크래시 파일 위치가 앞선 사용자 JVM 설정보다 우선한다.
+            javaArgList.add(errorFileArgument);
         }
         javaArgList.add(versionInfo.mainClass);
         javaArgList.addAll(Arrays.asList(launchArgs));
@@ -1447,6 +1453,7 @@ public final class Tools {
     }
 
     public static void fullyExit() {
+        RuntimeGameSession.onUserStop();
         android.os.Process.killProcess(android.os.Process.myPid());
     }
 
@@ -1458,7 +1465,6 @@ public final class Tools {
         Logger.appendToLog("Info: Allocated RAM: " + LauncherPreferences.PREF_RAM_ALLOCATION + "MB");
         Logger.appendToLog("Info: API version: " + SDK_INT);
         Logger.appendToLog("Info: Selected Minecraft version: " + gameVersion);
-        Logger.appendToLog("Info: Custom Java arguments: \"" + javaArguments + "\"");
         GLInfoUtils.GLInfo info = GLInfoUtils.getGlInfo();
         Logger.appendToLog("Info: Graphics device: "+info.vendor+ " "+info.renderer+" (OpenGL ES "+info.glesMajorVersion+")");
     }

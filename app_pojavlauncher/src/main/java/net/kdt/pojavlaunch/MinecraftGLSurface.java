@@ -39,6 +39,7 @@ import net.kdt.pojavlaunch.customcontrols.mouse.InGUIEventProcessor;
 import net.kdt.pojavlaunch.customcontrols.mouse.InGameEventProcessor;
 import net.kdt.pojavlaunch.customcontrols.mouse.TouchEventProcessor;
 import net.kdt.pojavlaunch.prefs.LauncherPreferences;
+import net.kdt.pojavlaunch.runtime.RuntimeGameSession;
 import net.kdt.pojavlaunch.utils.JREUtils;
 import net.kdt.pojavlaunch.utils.MCOptionUtils;
 import net.kdt.pojavlaunch.utils.TouchControllerUtils;
@@ -225,7 +226,8 @@ public class MinecraftGLSurface extends View implements GrabListener, DirectGame
 
                 @Override
                 public void onSurfaceTextureUpdated(@NonNull SurfaceTexture surface) {
-                    // TODO: Triggers on eglSwapBuffers. Add a loading message and make it end here
+                    // 첫 프레임은 렌더링 관측이며 게임 로딩 완료나 서버 접속을 뜻하지 않는다.
+                    RuntimeGameSession.onFirstFrame();
                 }
             });
 
