@@ -2,9 +2,6 @@ package net.kdt.pojavlaunch.authenticator.microsoft;
 
 import static net.kdt.pojavlaunch.PojavApplication.sExecutorService;
 
-import android.util.ArrayMap;
-import android.util.Base64;
-import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -23,6 +20,11 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
+import java.util.concurrent.CancellationException;
+import net.kdt.pojavlaunch.runtime.AccountAuthenticationException;
+import net.kdt.pojavlaunch.runtime.AccountAuthenticationException.Reason;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
@@ -31,10 +33,8 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
-import java.util.Map;
 
-/** Allow to perform a background login on a given account */
-// TODO handle connection errors !
+/** Microsoft 인증 교환과 기존 비동기 로그인 호출을 제공한다. 저장은 교환 이후에 수행한다. */
 public class MicrosoftBackgroundLogin {
     private static final String authTokenUrl = "https://login.live.com/oauth20_token.srf";
     private static final String xblAuthUrl = "https://user.auth.xboxlive.com/user/authenticate";
@@ -47,15 +47,14 @@ public class MicrosoftBackgroundLogin {
     private final String mAuthCode;
     private String microsoftAccessToken;
     private volatile boolean cancelled;
-    private volatile java.util.concurrent.Future<?> loginTask;
-    private static final Map<Long, Integer> XSTS_ERRORS;
-    static {
-        XSTS_ERRORS = new ArrayMap<>();
-        XSTS_ERRORS.put(2148916233L, R.string.xerr_no_account);
-        XSTS_ERRORS.put(2148916235L, R.string.xerr_not_available);
-        XSTS_ERRORS.put(2148916236L ,R.string.xerr_adult_verification);
-        XSTS_ERRORS.put(2148916237L ,R.string.xerr_adult_verification);
-        XSTS_ERRORS.put(2148916238L ,R.string.xerr_child);
+    private Thread worker;
+    private boolean committing;
+    private boolean finished;
+    private volatile HttpURLConnection activeConnection;
+    private final ConnectionFactory connections;
+
+    interface ConnectionFactory {
+        HttpURLConnection open(URL url) throws IOException;
     }
 
     /* Fields used to fill the account  */
@@ -66,9 +65,14 @@ public class MicrosoftBackgroundLogin {
     public boolean doesOwnGame, hasProfile = false;
     public long expiresAt;
 
-    public MicrosoftBackgroundLogin(boolean isRefresh, String authCode){
+    public MicrosoftBackgroundLogin(boolean isRefresh, String authCode) {
+        this(isRefresh, authCode, url -> (HttpURLConnection) url.openConnection());
+    }
+
+    MicrosoftBackgroundLogin(boolean isRefresh, String authCode, ConnectionFactory connections) {
         mIsRefresh = isRefresh;
         mAuthCode = authCode;
+        this.connections = connections;
     }
 
     /** Device Code로 받은 Microsoft 토큰에 기존 Xbox/Minecraft 교환을 적용한다. */
@@ -79,103 +83,159 @@ public class MicrosoftBackgroundLogin {
         return login;
     }
 
-    public void cancel() {
+    /** 기존 void API는 best-effort 취소다. 저장이 시작되면 중단하지 않는다. */
+    public synchronized void cancel() {
+        if (committing && !finished) {
+            return;
+        }
         cancelled = true;
-        java.util.concurrent.Future<?> task = loginTask;
-        if (task != null) {
-            task.cancel(true);
+        if (worker != null) {
+            worker.interrupt();
         }
     }
 
-    /** Performs a full login, calling back listeners appropriately  */
-    public void performLogin(@Nullable final ProgressListener progressListener,
-                             @Nullable final DoneListener doneListener,
-                             @Nullable final ErrorListener errorListener){
-        loginTask = sExecutorService.submit(() -> {
+    /** 기존 호출자의 저장 완료 후 메인 스레드 callback 계약을 유지한다. */
+    public void performLogin(
+            @Nullable final ProgressListener progressListener,
+            @Nullable final DoneListener doneListener,
+            @Nullable final ErrorListener errorListener
+    ) {
+        sExecutorService.execute(() -> {
+            synchronized (this) {
+                worker = Thread.currentThread();
+            }
+            MinecraftAccount account = null;
+            AccountAuthenticationException failure = null;
             try {
-                if (cancelled) {
-                    return;
+                account = authenticate(step -> notifyProgress(progressListener, step));
+                MinecraftAccount previous = MinecraftAccount.load(account.username);
+                if (previous != null) {
+                    account.selectedVersion = previous.selectedVersion;
                 }
-                notifyProgress(progressListener, 1);
-                String accessToken;
-                if (microsoftAccessToken != null) {
-                    accessToken = microsoftAccessToken;
-                } else {
-                    accessToken = acquireAccessToken(mIsRefresh, mAuthCode);
+                // 새 runtime 경로에는 얼굴 캐시의 네트워크·파일 부수 효과를 포함하지 않는다.
+                account.updateSkinFace();
+                synchronized (this) {
+                    checkCancelled();
+                    committing = true;
                 }
-                notifyProgress(progressListener, 2);
-                if (cancelled) {
-                    return;
+                try {
+                    account.save();
+                } catch (IOException storageFailure) {
+                    throw new AccountAuthenticationException(Reason.STORAGE);
                 }
-                String xboxLiveToken = acquireXBLToken(accessToken);
-                notifyProgress(progressListener, 3);
-                if (cancelled) {
-                    return;
-                }
-                String[] xsts = acquireXsts(xboxLiveToken);
-                notifyProgress(progressListener, 4);
-                if (cancelled) {
-                    return;
-                }
-                String mcToken = acquireMinecraftToken(xsts[0], xsts[1]);
-                notifyProgress(progressListener, 5);
-                if (cancelled) {
-                    return;
-                }
-                checkMcProfile(mcToken);
-                if (cancelled) {
-                    return;
-                }
-                fetchOwnedItems(mcToken);
-
-                if (!hasProfile && doesOwnGame) {
-                    throw new PresentedException(R.string.minecraft_no_username_set);
-                } else if (!doesOwnGame) {
-                    mcName = "Demo.Player";
-                    mcUuid = "00000000-0000-0000-0000-000000000000";
-                } else if (mcName == null || mcUuid == null)
-                    throw new IllegalStateException("This should never happen, please report this as a bug");
-
-                MinecraftAccount acc = MinecraftAccount.load(mcName);
-                if(acc == null) acc = new MinecraftAccount();
-                acc.xuid = xsts[0];
-                acc.clientToken = "0"; /* FIXME */
-                acc.accessToken = mcToken;
-                acc.username = mcName;
-                acc.profileId = mcUuid;
-                acc.isMicrosoft = true;
-                acc.msaRefreshToken = msRefreshToken;
-                acc.expiresAt = expiresAt;
-                acc.updateSkinFace();
-                if (cancelled || Thread.currentThread().isInterrupted()) {
-                    return;
-                }
-                acc.save();
-
-                if(doneListener != null) {
-                    MinecraftAccount finalAcc = acc;
-                    Tools.runOnUiThread(() -> {
-                        if (!cancelled) {
-                            doneListener.onLoginDone(finalAcc);
-                        }
-                    });
-                }
-
-            }catch (Exception e){
-                if (cancelled) {
-                    return;
-                }
-                Log.e("MicroAuth", "Exception thrown during authentication", e);
-                if(errorListener != null)
-                    Tools.runOnUiThread(() -> {
-                        if (!cancelled) {
-                            errorListener.onLoginError(e);
-                        }
-                    });
+            } catch (CancellationException ignored) {
+                cancelled = true;
+            } catch (Exception error) {
+                failure = AccountAuthenticationException.from(error);
             } finally {
                 ProgressLayout.clearProgress(ProgressLayout.AUTHENTICATE_MICROSOFT);
+                synchronized (this) {
+                    Thread.interrupted();
+                    worker = null;
+                    finished = true;
+                }
             }
+            MinecraftAccount completed = account;
+            AccountAuthenticationException error = failure;
+            Tools.runOnUiThread(() -> {
+                if (cancelled) {
+                    return;
+                }
+                if (error != null) {
+                    if (errorListener != null) {
+                        errorListener.onLoginError(legacyFailure(error));
+                    }
+                } else if (doneListener != null) {
+                    doneListener.onLoginDone(completed);
+                }
+            });
         });
+    }
+
+    /** 라이브러리 내부 조합용 동기 교환이다. 후보만 반환하며 계정·선택·스킨을 저장하지 않는다. */
+    public MinecraftAccount authenticate(@Nullable ProgressListener progress) throws AccountAuthenticationException {
+        try {
+            checkCancelled();
+            progress(progress, 1);
+            String accessToken = microsoftAccessToken;
+            if (accessToken == null) {
+                accessToken = acquireAccessToken(mIsRefresh, mAuthCode);
+            }
+            checkCancelled();
+            progress(progress, 2);
+            String xboxLiveToken = acquireXBLToken(accessToken);
+            checkCancelled();
+            progress(progress, 3);
+            String[] xsts = acquireXsts(xboxLiveToken);
+            checkCancelled();
+            progress(progress, 4);
+            String minecraftToken = acquireMinecraftToken(xsts[0], xsts[1]);
+            checkCancelled();
+            progress(progress, 5);
+            checkMcProfile(minecraftToken);
+            checkCancelled();
+            fetchOwnedItems(minecraftToken);
+            checkCancelled();
+            if (!hasProfile && doesOwnGame) {
+                throw new AccountAuthenticationException(Reason.PROFILE_REQUIRED);
+            } else if (!doesOwnGame) {
+                mcName = "Demo.Player";
+                mcUuid = "00000000-0000-0000-0000-000000000000";
+            } else if (mcName == null || mcUuid == null) {
+                throw new AccountAuthenticationException(Reason.INVALID_RESPONSE);
+            }
+            MinecraftAccount account = new MinecraftAccount();
+            account.xuid = xsts[0];
+            account.clientToken = "0";
+            account.accessToken = minecraftToken;
+            account.username = mcName;
+            account.profileId = mcUuid;
+            account.isMicrosoft = true;
+            account.msaRefreshToken = msRefreshToken;
+            account.expiresAt = expiresAt;
+            return account;
+        } catch (CancellationException cancelled) {
+            throw cancelled;
+        } catch (Exception failure) {
+            checkCancelled();
+            throw AccountAuthenticationException.from(failure);
+        } finally {
+            HttpURLConnection connection = activeConnection;
+            if (connection != null) {
+                connection.disconnect();
+                activeConnection = null;
+            }
+        }
+    }
+
+    private void checkCancelled() {
+        if (cancelled || Thread.currentThread().isInterrupted()) {
+            throw new CancellationException("계정 인증이 취소됐습니다");
+        }
+    }
+
+    private static void progress(ProgressListener listener, int step) {
+        if (listener != null) {
+            listener.onLoginProgress(step);
+        }
+    }
+
+    private static Throwable legacyFailure(AccountAuthenticationException failure) {
+        if (failure.reason == Reason.RATE_LIMITED) {
+            return new PresentedException(R.string.microsoft_login_retry_later);
+        }
+        if (failure.reason == Reason.PROFILE_REQUIRED) {
+            return new PresentedException(R.string.minecraft_no_username_set);
+        }
+        return failure;
+    }
+
+    private HttpURLConnection openConnection(URL url) throws IOException {
+        checkCancelled();
+        HttpURLConnection connection = connections.open(url);
+        connection.setInstanceFollowRedirects(false);
+        activeConnection = connection;
+        return connection;
     }
 
     public String acquireAccessToken(boolean isRefresh, String authcode) throws IOException, JSONException {
@@ -189,7 +249,7 @@ public class MicrosoftBackgroundLogin {
                 "scope", MicrosoftDeviceCodeLogin.SCOPE
         );
 
-        HttpURLConnection conn = (HttpURLConnection)url.openConnection();
+        HttpURLConnection conn = openConnection(url);
         conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
         conn.setRequestProperty("charset", "utf-8");
         conn.setRequestProperty("Content-Length", Integer.toString(formData.getBytes(StandardCharsets.UTF_8).length));
@@ -204,13 +264,19 @@ public class MicrosoftBackgroundLogin {
             wr.write(formData.getBytes(StandardCharsets.UTF_8));
         }
         if(conn.getResponseCode() >= 200 && conn.getResponseCode() < 300) {
-            JSONObject jo = new JSONObject(Tools.read(conn.getInputStream()));
-            msRefreshToken = jo.getString("refresh_token");
+            JSONObject jo = new JSONObject(readResponse(conn.getInputStream()));
+            if (jo.has("refresh_token")) {
+                msRefreshToken = requiredString(jo, "refresh_token");
+            } else if (isRefresh) {
+                msRefreshToken = authcode;
+            } else {
+                throw new AccountAuthenticationException(Reason.INVALID_RESPONSE);
+            }
             conn.disconnect();
-            return jo.getString("access_token");
-            //acquireXBLToken(jo.getString("access_token"));
+            return requiredString(jo, "access_token");
+            //acquireXBLToken(requiredString(jo, "access_token"));
         }else{
-            throw getResponseThrowable(conn);
+            throw getResponseThrowable(conn, true, false);
         }
     }
 
@@ -227,7 +293,7 @@ public class MicrosoftBackgroundLogin {
         data.put("TokenType", "JWT");
 
         String req = data.toString();
-        HttpURLConnection conn = (HttpURLConnection)url.openConnection();
+        HttpURLConnection conn = openConnection(url);
         setCommonProperties(conn, req);
         conn.setConnectTimeout(15000);
         conn.setReadTimeout(30000);
@@ -237,10 +303,10 @@ public class MicrosoftBackgroundLogin {
             wr.write(req.getBytes(StandardCharsets.UTF_8));
         }
         if(conn.getResponseCode() >= 200 && conn.getResponseCode() < 300) {
-            JSONObject jo = new JSONObject(Tools.read(conn.getInputStream()));
+            JSONObject jo = new JSONObject(readResponse(conn.getInputStream()));
             conn.disconnect();
-            return jo.getString("Token");
-            //acquireXsts(jo.getString("Token"));
+            return requiredString(jo, "Token");
+            //acquireXsts(requiredString(jo, "Token"));
         }else{
             throw getResponseThrowable(conn);
         }
@@ -259,9 +325,8 @@ public class MicrosoftBackgroundLogin {
         data.put("TokenType", "JWT");
 
         String req = data.toString();
-        HttpURLConnection conn = (HttpURLConnection)url.openConnection();
+        HttpURLConnection conn = openConnection(url);
         setCommonProperties(conn, req);
-        Log.i("MicroAuth", conn.getRequestMethod());
         conn.setConnectTimeout(15000);
         conn.setReadTimeout(30000);
         conn.connect();
@@ -271,23 +336,14 @@ public class MicrosoftBackgroundLogin {
         }
 
         if(conn.getResponseCode() >= 200 && conn.getResponseCode() < 300) {
-            JSONObject jo = new JSONObject(Tools.read(conn.getInputStream()));
+            JSONObject jo = new JSONObject(readResponse(conn.getInputStream()));
             String uhs = jo.getJSONObject("DisplayClaims").getJSONArray("xui").getJSONObject(0).getString("uhs");
-            String token = jo.getString("Token");
+            String token = requiredString(jo, "Token");
             conn.disconnect();
             return new String[]{uhs, token};
-            //acquireMinecraftToken(uhs,jo.getString("Token"));
-        }else if(conn.getResponseCode() == 401) {
-            String responseContents = Tools.read(conn.getErrorStream());
-            JSONObject jo = new JSONObject(responseContents);
-            long xerr = jo.optLong("XErr", -1);
-            Integer locale_id = XSTS_ERRORS.get(xerr);
-            if(locale_id != null) {
-                throw new PresentedException(new RuntimeException(responseContents), locale_id);
-            }
-            throw new PresentedException(new RuntimeException(responseContents), R.string.xerr_unknown, xerr);
-        }else{
-            throw getResponseThrowable(conn);
+            //acquireMinecraftToken(uhs,requiredString(jo, "Token"));
+        } else {
+            throw getResponseThrowable(conn, false, true);
         }
     }
 
@@ -298,7 +354,7 @@ public class MicrosoftBackgroundLogin {
         data.put("identityToken", "XBL3.0 x=" + xblUhs + ";" + xblXsts);
 
         String req = data.toString();
-        HttpURLConnection conn = (HttpURLConnection)url.openConnection();
+        HttpURLConnection conn = openConnection(url);
         setCommonProperties(conn, req);
         conn.setConnectTimeout(15000);
         conn.setReadTimeout(30000);
@@ -309,12 +365,12 @@ public class MicrosoftBackgroundLogin {
         }
 
         if(conn.getResponseCode() >= 200 && conn.getResponseCode() < 300) {
-            expiresAt = System.currentTimeMillis() + 86400000;
-            JSONObject jo = new JSONObject(Tools.read(conn.getInputStream()));
+            JSONObject jo = new JSONObject(readResponse(conn.getInputStream()));
+            expiresAt = AuthenticationResponses.minecraftExpiry(jo, System.currentTimeMillis());
             conn.disconnect();
-            mcToken = jo.getString("access_token");
-            //checkMcProfile(jo.getString("access_token"));
-            return jo.getString("access_token");
+            mcToken = requiredString(jo, "access_token");
+            //checkMcProfile(requiredString(jo, "access_token"));
+            return requiredString(jo, "access_token");
         }else{
             throw getResponseThrowable(conn);
         }
@@ -331,22 +387,22 @@ public class MicrosoftBackgroundLogin {
         // For some reason, minecraftservices APIs are significantly more unreliable
         // Automatically retry because the user gets annoyed when they have to log in again
         for (int retryCount = 0; retryCount < 5; ++retryCount) {
-            if (cancelled) {
-                throw new java.util.concurrent.CancellationException();
-            }
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            checkCancelled();
+            HttpURLConnection conn = openConnection(url);
             conn.setRequestProperty("Authorization", "Bearer " + mcAccessToken);
             conn.setUseCaches(false);
             conn.setConnectTimeout(15000);
             conn.setReadTimeout(30000);
             conn.connect();
             if (conn.getResponseCode() >= 200 && conn.getResponseCode() < 300) {
-                s = Tools.read(conn.getInputStream());
+                s = readResponse(conn.getInputStream());
                 conn.disconnect();
                 break;
-            } else if (retryCount == 4) {
+            } else if (conn.getResponseCode() == 401 || conn.getResponseCode() == 403
+                    || conn.getResponseCode() == 429 || retryCount == 4) {
                 throw getResponseThrowable(conn);
             }
+            conn.disconnect();
             try { Thread.sleep(500L * (1L << retryCount)); // 0.5s, 1s, 2s, 4s, 8s
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
@@ -354,11 +410,16 @@ public class MicrosoftBackgroundLogin {
             }
         }
         try {
-            String jwtSignature = new JSONObject(s).getString("signature");
-            String jwtBody = jwtSignature.split("\\.")[1];
+            String jwtSignature = requiredString(new JSONObject(s), "signature");
+            String[] parts = jwtSignature.split("\\.");
+            if (parts.length < 2) {
+                throw new AccountAuthenticationException(Reason.INVALID_RESPONSE);
+            }
+            String jwtBody = parts[1];
 
             String signature = new String(
-                    Base64.decode(jwtBody, Base64.DEFAULT),
+                    java.util.Base64.getUrlDecoder()
+                            .decode(jwtBody),
                     StandardCharsets.UTF_8
             );
             JSONObject jsonSignature = new JSONObject(signature);
@@ -386,9 +447,8 @@ public class MicrosoftBackgroundLogin {
                 }
             }
         }
-        catch (JSONException e){
-            Log.w("MicrosoftLogin", "Either the Auth API was changed or this account does not own Minecraft! Assuming the latter.");
-            doesOwnGame = false;
+        catch (JSONException | IllegalArgumentException e){
+            throw new AccountAuthenticationException(Reason.INVALID_RESPONSE);
         }
 
     }
@@ -399,10 +459,8 @@ public class MicrosoftBackgroundLogin {
         // For some reason, minecraftservices APIs are significantly more unreliable
         // Automatically retry because the user gets annoyed when they have to log in again
         for (int retryCount = 0; retryCount < 5; ++retryCount) {
-            if (cancelled) {
-                throw new java.util.concurrent.CancellationException();
-            }
-            HttpURLConnection conn = (HttpURLConnection)url.openConnection();
+            checkCancelled();
+            HttpURLConnection conn = openConnection(url);
             conn.setRequestProperty("Authorization", "Bearer " + mcAccessToken);
             conn.setUseCaches(false);
             conn.setConnectTimeout(15000);
@@ -410,32 +468,31 @@ public class MicrosoftBackgroundLogin {
             conn.connect();
 
             if(conn.getResponseCode() >= 200 && conn.getResponseCode() < 300) {
-                String s= Tools.read(conn.getInputStream());
+                String s= readResponse(conn.getInputStream());
                 conn.disconnect();
-                Log.i("MicrosoftLogin","profile:" + s);
                 JSONObject jsonObject = new JSONObject(s);
-                String name = (String) jsonObject.get("name");
-                String uuid = (String) jsonObject.get("id");
+                String name = requiredString(jsonObject, "name");
+                String uuid = requiredString(jsonObject, "id");
+                if (!name.matches("[A-Za-z0-9_]{3,16}") || !uuid.matches("[0-9A-Fa-f]{32}")) {
+                    throw new AccountAuthenticationException(Reason.INVALID_RESPONSE);
+                }
                 String uuidDashes = uuid.replaceFirst(
                         "(\\p{XDigit}{8})(\\p{XDigit}{4})(\\p{XDigit}{4})(\\p{XDigit}{4})(\\p{XDigit}+)", "$1-$2-$3-$4-$5"
                 );
                 doesOwnGame = true;
                 hasProfile = true;
-                Log.i("MicrosoftLogin","UserName = " + name);
-                Log.i("MicrosoftLogin","Uuid Minecraft = " + uuidDashes);
                 mcName = name;
                 mcUuid = uuidDashes;
                 break;
             } else if (conn.getResponseCode() == 404){
-                Log.i("MicrosoftLogin","It seems that this Microsoft Account does not have a Minecraft profile, checking for ownership.");
+                conn.disconnect();
                 hasProfile = false;
                 break;
-            } else if (conn.getResponseCode() == 401){
-                Log.e("MicrosoftLogin", "You screwed up the auth code somewhere");
-                throw getResponseThrowable(conn);
-            } else if (retryCount == 4) {
+            } else if (conn.getResponseCode() == 401 || conn.getResponseCode() == 403
+                    || conn.getResponseCode() == 429 || retryCount == 4) {
                 throw getResponseThrowable(conn);
             }
+            conn.disconnect();
             try { Thread.sleep(500L * (1L << retryCount)); // 0.5s, 1s, 2s, 4s, 8s
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
@@ -461,8 +518,8 @@ public class MicrosoftBackgroundLogin {
         try {
             conn.setRequestProperty("Content-Length", Integer.toString(formData.getBytes(StandardCharsets.UTF_8).length));
             conn.setRequestMethod("POST");
-        }catch (ProtocolException e) {
-            Log.e("MicrosoftAuth", e.toString());
+        } catch (ProtocolException failure) {
+            throw new IllegalStateException("인증 요청을 구성하지 못했습니다");
         }
         conn.setUseCaches(false);
         conn.setDoInput(true);
@@ -484,11 +541,47 @@ public class MicrosoftBackgroundLogin {
         return builder.toString();
     }
 
-    private RuntimeException getResponseThrowable(HttpURLConnection conn) throws IOException {
-        Log.i("MicrosoftLogin", "Error code: " + conn.getResponseCode() + ": " + conn.getResponseMessage());
-        if(conn.getResponseCode() == 429) {
-            return new PresentedException(R.string.microsoft_login_retry_later);
+    private static String readResponse(InputStream input) throws IOException {
+        try (InputStream response = input; ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[4096];
+            int count;
+            while ((count = response.read(buffer)) != -1) {
+                if (bytes.size() + count > 65536) {
+                    throw new AccountAuthenticationException(Reason.INVALID_RESPONSE);
+                }
+                bytes.write(buffer, 0, count);
+            }
+            return new String(bytes.toByteArray(), StandardCharsets.UTF_8);
         }
-        return new RuntimeException(conn.getResponseMessage());
+    }
+
+    private static String requiredString(JSONObject object, String key) throws JSONException, AccountAuthenticationException {
+        Object value = object.get(key);
+        if (!(value instanceof String) || ((String) value).isEmpty()) {
+            throw new AccountAuthenticationException(Reason.INVALID_RESPONSE);
+        }
+        return (String) value;
+    }
+
+    private AccountAuthenticationException getResponseThrowable(HttpURLConnection connection) throws IOException {
+        return getResponseThrowable(connection, false, false);
+    }
+
+    private AccountAuthenticationException getResponseThrowable(
+            HttpURLConnection connection,
+            boolean microsoftToken,
+            boolean xsts
+    ) throws IOException {
+        try {
+            int status = connection.getResponseCode();
+            String body = "";
+            InputStream input = connection.getErrorStream();
+            if (input != null) {
+                body = readResponse(input);
+            }
+            return AuthenticationResponses.httpFailure(status, microsoftToken, xsts, body);
+        } finally {
+            connection.disconnect();
+        }
     }
 }

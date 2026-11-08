@@ -58,6 +58,18 @@ public class PojavProfile {
 		return accountList;
 	}
 	
+    /** 인증 worker가 저장 완료를 확인한 뒤 결과를 전달할 때 사용한다. */
+    public static void saveCurrentProfile(@NonNull Context ctx, @Nullable String id) throws IOException {
+        String selectedId = id == null ? "" : id;
+        boolean saved = getPrefs(ctx)
+                .edit()
+                .putString(PROFILE_PREF_FILE, selectedId)
+                .commit();
+        if (!saved) {
+            throw new IOException("현재 계정 선택을 저장하지 못했습니다");
+        }
+    }
+
 	public static void setCurrentProfile(@NonNull Context ctx, @Nullable  Object obj) {
 		SharedPreferences.Editor pref = getPrefs(ctx).edit();
 		

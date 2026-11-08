@@ -59,7 +59,7 @@ final class AccountStore {
         Files.delete(accountFile(id));
     }
 
-    private Path accountFile(String id) throws IOException {
+    Path accountFile(String id) throws IOException {
         if (!isValidId(id)) {
             throw new IllegalArgumentException("올바른 저장 계정 ID가 필요합니다");
         }

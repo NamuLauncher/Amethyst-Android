@@ -18,7 +18,6 @@ import net.kdt.pojavlaunch.MainActivity;
 import net.kdt.pojavlaunch.PojavApplication;
 import net.kdt.pojavlaunch.PojavProfile;
 import net.kdt.pojavlaunch.Tools;
-import net.kdt.pojavlaunch.authenticator.microsoft.MicrosoftBackgroundLogin;
 import net.kdt.pojavlaunch.extra.ExtraConstants;
 import net.kdt.pojavlaunch.extra.ExtraCore;
 import net.kdt.pojavlaunch.prefs.LauncherPreferences;
@@ -33,6 +32,7 @@ import net.kdt.pojavlaunch.value.launcherprofiles.MinecraftProfile;
 public final class AmethystRuntime {
     public static final String ACTION_GAME_RUN_CHANGED = "net.kdt.pojavlaunch.runtime.GAME_RUN_CHANGED";
     public static final String EXTRA_RUN_ID = "net.kdt.pojavlaunch.runtime.RUN_ID";
+    public static final String EXTRA_AUTH_REASON = RuntimeAccountActivity.EXTRA_AUTH_REASON;
     public interface Completion {
         void onReady();
         void onFailure(Throwable failure);
@@ -48,6 +48,17 @@ public final class AmethystRuntime {
 
     public interface PreparationRequest {
         /** 수락 후에도 실제 작업 종료를 알리는 onCancelled까지 기다려야 한다. */
+        boolean cancel();
+    }
+
+    public interface AuthenticationListener extends Completion {
+        default void onCancelled() {
+            onFailure(new CancellationException("계정 인증이 취소됐습니다"));
+        }
+    }
+
+    public interface AuthenticationRequest {
+        /** 저장이 시작되면 false다. true여도 실제 작업 종료 콜백까지 기다려야 한다. */
         boolean cancel();
     }
 
@@ -117,7 +128,28 @@ public final class AmethystRuntime {
     }
 
     public static void openAccount(Activity activity) {
-        activity.startActivity(new Intent(activity, RuntimeAccountActivity.class));
+        activity.startActivity(accountIntent(activity));
+    }
+
+    /** Activity Result로 성공·취소·안전한 실패 이유를 받는 OAuth 화면이다. */
+    public static Intent accountIntent(Context context) {
+        return new Intent(context, RuntimeAccountActivity.class);
+    }
+
+    /** OAuth 화면이 받은 code를 교환한다. 결과는 저장·선택 완료 뒤 메인 스레드로 전달한다. */
+    public static AuthenticationRequest startAccountLogin(
+            Context context,
+            String code,
+            AuthenticationListener listener
+    ) {
+        return RuntimeAuthentication.create(context)
+                .login(code, listener);
+    }
+
+    /** 유효한 토큰은 재사용하고 필요한 갱신은 한 번 수행한다. 취소 완료까지 요청을 보관한다. */
+    public static AuthenticationRequest startAccountRefresh(Context context, AuthenticationListener listener) {
+        return RuntimeAuthentication.create(context)
+                .refresh(listener);
     }
 
     public interface LoginRequest {
@@ -144,18 +176,17 @@ public final class AmethystRuntime {
     }
 
     public static void refreshAccount(Activity activity, Completion completion) {
-        initialize(activity);
-        MinecraftAccount account = PojavProfile.getCurrentProfileContent(activity, null);
-        if (account == null || !account.isMicrosoft || account.isDemo()) {
-            completion.onFailure(new IllegalStateException("Minecraft 로그인이 필요합니다"));
-            return;
-        }
-        if (account.expiresAt > System.currentTimeMillis() + 60000) {
-            completion.onReady();
-            return;
-        }
-        new MicrosoftBackgroundLogin(true, account.msaRefreshToken).performLogin(null,
-                updated -> completion.onReady(), completion::onFailure);
+        startAccountRefresh(activity, new AuthenticationListener() {
+            @Override
+            public void onReady() {
+                completion.onReady();
+            }
+
+            @Override
+            public void onFailure(Throwable failure) {
+                completion.onFailure(failure);
+            }
+        });
     }
 
     /** 앱 내부 게임 폴더에서 현재 ABI의 네이티브 경로를 반환한다. */
