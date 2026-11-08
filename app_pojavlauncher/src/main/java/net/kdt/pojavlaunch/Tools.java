@@ -458,7 +458,15 @@ public final class Tools {
         String[] launchArgs = getMinecraftClientArgs(minecraftAccount, versionInfo, gamedir);
         if (minecraftProfile.extraGameArguments != null) {
             List<String> arguments = new ArrayList<>(java.util.Arrays.asList(launchArgs));
-            java.util.Collections.addAll(arguments, minecraftProfile.extraGameArguments);
+            Object[] versionArguments = null;
+            if (versionInfo.arguments != null) {
+                versionArguments = versionInfo.arguments.game;
+            }
+            HostGameArguments.appendTo(
+                    arguments,
+                    minecraftProfile.extraGameArguments,
+                    versionArguments
+            );
             launchArgs = arguments.toArray(new String[0]);
         }
 
