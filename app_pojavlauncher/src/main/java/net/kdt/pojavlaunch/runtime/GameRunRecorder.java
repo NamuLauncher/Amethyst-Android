@@ -1,14 +1,23 @@
 package net.kdt.pojavlaunch.runtime;
 
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
 
 /** 같은 게임 프로세스의 콜백을 직렬화하고 처음 관측한 종료 결과를 유지한다. */
 final class GameRunRecorder {
     private final GameRunStore store;
+    private final LongSupplier elapsedClock;
     private GameRunSnapshot current;
+    private Long jvmStartTick;
 
     GameRunRecorder(GameRunStore store) throws IOException {
+        this(store, () -> TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));
+    }
+
+    GameRunRecorder(GameRunStore store, LongSupplier elapsedClock) throws IOException {
         this.store = store;
+        this.elapsedClock = elapsedClock;
         current = store.read();
         if (current == null) {
             throw new IOException("실행 상태가 초기화되지 않았습니다");
@@ -39,7 +48,8 @@ final class GameRunRecorder {
                 current.firstFrameAt,
                 null,
                 false,
-                null
+                null,
+                current.jvmElapsedMillis
         ));
     }
 
@@ -47,6 +57,7 @@ final class GameRunRecorder {
         if (current.stage != GameRunSnapshot.Stage.STARTING) {
             return false;
         }
+        jvmStartTick = elapsedClock.getAsLong();
         return publish(new GameRunSnapshot(
                 current.runId,
                 GameRunSnapshot.Stage.JVM_STARTED,
@@ -57,7 +68,8 @@ final class GameRunRecorder {
                 null,
                 null,
                 false,
-                null
+                null,
+                0L
         ));
     }
 
@@ -75,7 +87,27 @@ final class GameRunRecorder {
                 now,
                 null,
                 false,
-                null
+                null,
+                elapsedMillis(elapsedClock.getAsLong())
+        ));
+    }
+
+    synchronized boolean checkpoint(long now) throws IOException {
+        if (jvmStartTick == null || current.isTerminal()) {
+            return false;
+        }
+        return publish(new GameRunSnapshot(
+                current.runId,
+                current.stage,
+                current.startedAt,
+                now,
+                current.processId,
+                current.jvmStartedAt,
+                current.firstFrameAt,
+                null,
+                false,
+                null,
+                elapsedMillis(elapsedClock.getAsLong())
         ));
     }
 
@@ -85,17 +117,23 @@ final class GameRunRecorder {
                 code,
                 signal,
                 null,
-                now
+                now,
+                elapsedClock.getAsLong()
         );
     }
 
     synchronized boolean failed(String failureType, long now) throws IOException {
+        return failed(failureType, now, elapsedClock.getAsLong());
+    }
+
+    synchronized boolean failed(String failureType, long now, long elapsedAtFailure) throws IOException {
         return finish(
                 GameRunSnapshot.Stage.FAILED,
                 null,
                 false,
                 failureType,
-                now
+                now,
+                elapsedAtFailure
         );
     }
 
@@ -105,7 +143,8 @@ final class GameRunRecorder {
                 null,
                 false,
                 null,
-                now
+                now,
+                elapsedClock.getAsLong()
         );
     }
 
@@ -114,7 +153,8 @@ final class GameRunRecorder {
             Integer exitCode,
             boolean signal,
             String failureType,
-            long now
+            long now,
+            long elapsedAtEnd
     ) throws IOException {
         if (current.isTerminal()) {
             return false;
@@ -129,8 +169,17 @@ final class GameRunRecorder {
                 current.firstFrameAt,
                 exitCode,
                 signal,
-                failureType
+                failureType,
+                elapsedMillis(elapsedAtEnd)
         ));
+    }
+
+    private Long elapsedMillis(long now) {
+        if (jvmStartTick == null) {
+            // 읽기 전용으로 다시 연 기록은 시작 tick을 추측하지 않는다.
+            return current.jvmElapsedMillis;
+        }
+        return Math.max(0, now - jvmStartTick);
     }
 
     private boolean publish(GameRunSnapshot next) throws IOException {

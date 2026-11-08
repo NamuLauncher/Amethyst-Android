@@ -74,6 +74,7 @@ public final class RuntimeProbeService extends Service {
                 RuntimeGameSession.onUserStop();
                 RuntimeGameSession.onFailure(new IllegalStateException("Test late failure"));
                 RuntimeGameSession.onFirstFrame();
+                RuntimeGameSession.onJvmStarted();
                 stopSelf();
                 Process.killProcess(Process.myPid());
             } else {

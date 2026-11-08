@@ -20,6 +20,8 @@ public final class GameRunSnapshot {
     public final int processId;
     public final Long jvmStartedAt;
     public final Long firstFrameAt;
+    /** JVM 진입부터 단조 시계로 관측한 누적 밀리초이며, 이전 기록과 진입 전에는 null이다. */
+    public final Long jvmElapsedMillis;
     public final Integer exitCode;
     public final boolean signal;
     /** 오류 메시지나 인자 대신 예외 클래스 이름만 전달한다. */
@@ -35,7 +37,8 @@ public final class GameRunSnapshot {
             Long firstFrameAt,
             Integer exitCode,
             boolean signal,
-            String failureType
+            String failureType,
+            Long jvmElapsedMillis
     ) {
         validateRunId(runId);
         this.stage = Objects.requireNonNull(stage, "stage");
@@ -44,6 +47,9 @@ public final class GameRunSnapshot {
         }
         if (firstFrameAt != null && jvmStartedAt == null) {
             throw new IllegalArgumentException("첫 프레임에는 JVM 시작 기록이 필요합니다");
+        }
+        if (jvmElapsedMillis != null && (jvmElapsedMillis < 0 || jvmStartedAt == null)) {
+            throw new IllegalArgumentException("JVM 경과시간에는 시작 기록과 음수가 아닌 값이 필요합니다");
         }
         if (stage == Stage.STARTING && (jvmStartedAt != null || firstFrameAt != null)) {
             throw new IllegalArgumentException("시작 전 상태에 JVM 관측 기록이 있습니다");
@@ -70,6 +76,7 @@ public final class GameRunSnapshot {
         this.processId = processId;
         this.jvmStartedAt = jvmStartedAt;
         this.firstFrameAt = firstFrameAt;
+        this.jvmElapsedMillis = jvmElapsedMillis;
         this.exitCode = exitCode;
         this.signal = signal;
         this.failureType = failureType;
