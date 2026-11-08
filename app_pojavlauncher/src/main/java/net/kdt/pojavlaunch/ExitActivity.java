@@ -12,6 +12,8 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
+import net.kdt.pojavlaunch.runtime.RuntimeGameSession;
+
 @Keep
 public class ExitActivity extends AppCompatActivity {
 
@@ -37,6 +39,9 @@ public class ExitActivity extends AppCompatActivity {
     }
 
     public static void showExitMessage(Context ctx, int code, boolean isSignal) {
+        if (RuntimeGameSession.onExit(code, isSignal) || code == 0) {
+            return;
+        }
         Intent i = new Intent(ctx,ExitActivity.class);
         i.putExtra("code",code);
         i.putExtra("isSignal", isSignal);

@@ -68,6 +68,7 @@ import net.kdt.pojavlaunch.customcontrols.mouse.Touchpad;
 import net.kdt.pojavlaunch.lifecycle.ContextExecutor;
 import net.kdt.pojavlaunch.prefs.LauncherPreferences;
 import net.kdt.pojavlaunch.prefs.QuickSettingSideDialog;
+import net.kdt.pojavlaunch.runtime.RuntimeGameSession;
 import net.kdt.pojavlaunch.services.GameService;
 import net.kdt.pojavlaunch.utils.JREUtils;
 import net.kdt.pojavlaunch.utils.MCOptionUtils;
@@ -124,6 +125,16 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        try {
+            RuntimeGameSession.initialize(this);
+        } catch (IOException failure) {
+            if (RuntimeGameSession.onFailure(failure)) {
+                Tools.fullyExit();
+            } else {
+                Tools.showError(this, failure, true);
+            }
+            return;
+        }
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
 
         minecraftProfile = LauncherProfiles.getCurrentProfile();
@@ -225,9 +236,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
 
         try {
             File latestLogFile = new File(Tools.DIR_GAME_HOME, "latestlog.txt");
-            if(!latestLogFile.exists() && !latestLogFile.createNewFile())
-                throw new IOException("Failed to create a new log file");
-            Logger.begin(latestLogFile.getAbsolutePath());
+            RuntimeGameSession.beginLogging(latestLogFile);
             // FIXME: is it safe for multi thread?
             GLOBAL_CLIPBOARD = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             touchCharInput.setCharacterSender(new LwjglCharSender());
@@ -287,12 +296,20 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
                     touchControllerInputView.setSize(minecraftGLView.getWidth(), minecraftGLView.getHeight());
 
                     runCraft(finalVersion, mVersionInfo);
-                }catch (Throwable e){
-                    Tools.showErrorRemote(e);
+                } catch (Throwable e) {
+                    if (RuntimeGameSession.onFailure(e)) {
+                        Tools.fullyExit();
+                    } else {
+                        Tools.showErrorRemote(e);
+                    }
                 }
             });
         } catch (Throwable e) {
-            Tools.showError(this, e, true);
+            if (RuntimeGameSession.onFailure(e)) {
+                Tools.fullyExit();
+            } else {
+                Tools.showError(this, e, true);
+            }
         }
     }
 

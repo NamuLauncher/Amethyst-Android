@@ -31,6 +31,7 @@ import net.kdt.pojavlaunch.extra.ExtraCore;
 import net.kdt.pojavlaunch.lifecycle.LifecycleAwareAlertDialog;
 import net.kdt.pojavlaunch.multirt.MultiRTUtils;
 import net.kdt.pojavlaunch.multirt.Runtime;
+import net.kdt.pojavlaunch.runtime.RuntimeGameSession;
 import net.kdt.pojavlaunch.plugins.FFmpegPlugin;
 import net.kdt.pojavlaunch.prefs.*;
 import net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles;
@@ -305,7 +306,7 @@ public class JREUtils {
         readCustomEnv(envMap); // Must be last so it overrides anything the user sets for obvious reasons.
 
         for (Map.Entry<String, String> env : envMap.entrySet()) {
-            Logger.appendToLog("Added custom env: " + env.getKey() + "=" + env.getValue());
+            Logger.appendToLog("Configured environment variable: " + env.getKey());
             try {
                 Os.setenv(env.getKey(), env.getValue(), true);
             }catch (NullPointerException exception){
@@ -415,7 +416,6 @@ public class JREUtils {
 
         userArgs.addAll(JVMArgs);
         activity.runOnUiThread(() -> Toast.makeText(activity, activity.getString(R.string.autoram_info_msg,LauncherPreferences.PREF_RAM_ALLOCATION), Toast.LENGTH_SHORT).show());
-        System.out.println(JVMArgs);
 
         initJavaRuntime(runtimeHome);
         JREUtils.setupExitMethod(activity.getApplication());
@@ -423,9 +423,11 @@ public class JREUtils {
         chdir(effectiveGameDirectory.getAbsolutePath());
         userArgs.add(0,"java"); //argv[0] is the program name according to C standard.
 
+        RuntimeGameSession.onJvmStarted();
         final int exitCode = VMLauncher.launchJVM(userArgs.toArray(new String[0]));
+        boolean handledByHost = RuntimeGameSession.onExit(exitCode, false);
         Logger.appendToLog("Java Exit code: " + exitCode);
-        if (exitCode != 0) {
+        if (!handledByHost && exitCode != 0) {
             LifecycleAwareAlertDialog.DialogCreator dialogCreator = (dialog, builder)->
                     builder.setMessage(activity.getString(R.string.mcn_exit_title, exitCode))
                     .setPositiveButton(R.string.main_share_logs, (dialogInterface, which)-> shareLog(activity));
@@ -545,7 +547,9 @@ public class JREUtils {
                     }
                     parsedArguments.add(parsedSubString);
                 }
-                else Log.w("JAVA ARGS PARSER", "Removed improper arguments: " + parsedSubString);
+                else {
+                    Log.w("JAVA ARGS PARSER", "Removed an improper Java argument");
+                }
             }
         }
         return parsedArguments;
