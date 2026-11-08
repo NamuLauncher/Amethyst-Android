@@ -62,4 +62,35 @@ GitHub Actions를 사용할 수 없는 동안 필요한 검증은 로컬에서 �
 
 선택은 존재하고 읽을 수 있는 저장 계정에 대해서만 성공한다. 선택 자체는 silent refresh나 네트워크 인증을 시작하지 않는다. 삭제는 지정한 로컬 계정 파일만 제거하며 현재 계정을 지우면 선택을 해제한다. 다른 계정을 자동 선택하지 않는다. 파일 삭제가 실패하면 현재 선택을 유지한다. 이미 알려진 저장 키로 손상된 파일을 제거할 수는 있지만 경로·상위 폴더·링크를 통해 다른 파일을 삭제할 수는 없다. 기존 username 기반 저장 파일과 선택 preference를 유지하며 UUID 파일명으로 이전하지 않는다.
 
-이 API는 파일 IO를 수행하므로 호스트가 작업 스레드에서 호출하고, 준비·인증·게임 실행 중 계정 변경을 UI 작업 가드로 막는다. 런타임에 세션 lease나 호스트 서비스 정책을 추가하지 않는다. 기존 로그인·Device Code API는 그대로이며 OAuth 결과·silent refresh 개선 및 호스트 계정 화면 연결은 별도 변경이다. JVM 파일 계약과 Android의 공개 API·실제 preference 연결을 검증하며 실제 Microsoft 로그인 성공을 대신하지 않는다.
+이 API는 파일 IO를 수행하므로 호스트가 작업 스레드에서 호출하고, 준비·인증·게임 실행 중 계정 변경을 UI 작업 가드로 막는다. 런타임에 세션 lease나 호스트 서비스 정책을 추가하지 않는다. 기존 로그인·Device Code API는 유지한다. OAuth 결과·silent refresh는 아래 계약으로 제공하며 호스트 계정 화면은 별도로 연결한다. JVM 파일 계약과 Android의 공개 API·실제 preference 연결을 검증하며 실제 Microsoft 로그인 성공을 대신하지 않는다.
+
+
+## OAuth 결과와 계정 갱신
+
+호스트는 `AmethystRuntime.accountIntent(context)`를 Activity Result launcher로 연다. 기존 `openAccount(Activity)`도 같은 upstream OAuth 화면을 연다. 결과는 성공 `Activity.RESULT_OK`, 취소 `Activity.RESULT_CANCELED`, 실패 `Activity.RESULT_FIRST_USER`다. 실패 Intent에는 `AmethystRuntime.EXTRA_AUTH_REASON`으로 `AccountAuthenticationException.Reason.name()` 하나만 넣는다. 호스트는 알 수 없는 값과 없는 extra를 안전한 실패로 처리하고 성공 뒤에는 저장 계정 요약을 다시 조회한다. code·token·응답 본문·Throwable은 결과에 넣지 않는다.
+
+OAuth 화면은 같은 redirect를 중복 교환하지 않는다. 뒤로가기는 browsing 중에는 즉시 취소하고, 교환 중에는 취소를 요청한 뒤 실제 결과를 기다린다. 저장이 시작되어 취소할 수 없으면 저장 결과를 기다린다고 안내한다. 실패 뒤에는 같은 code를 자동 재요청하지 않으며 사용자가 호스트에서 다시 로그인해야 한다. Activity 회전은 ViewModel의 요청과 안전한 상태를 이어받는다. 프로세스가 종료됐다면 인증 시작 여부만 복원하여 취소하고, code를 saved state에 저장하거나 교환을 재시작하지 않는다.
+
+`startAccountRefresh(Context, AuthenticationListener)`는 application Context를 사용한다. 유효한 Minecraft 토큰의 수명이 60초보다 많이 남으면 네트워크 없이 완료한다. 갱신이 필요하면 현재 계정 하나를 한 번 갱신한다. 갱신 정보 누락·인증 거절은 재로그인 필요로, 네트워크·429·서버 장애·계정 제한·게임 미보유·프로필 미설정·잘못된 응답·로컬 저장 실패는 각각의 안전한 reason으로 전달한다. 기존 `refreshAccount(Activity, Completion)`는 새 경로의 호환 adapter다. 새 API의 모든 terminal callback은 메인 스레드에서 전달한다.
+
+Minecraft 토큰의 `expires_in` 양의 정수 수명을 사용하고 overflow와 잘못된 명시 값을 거부한다. 필드가 아예 없을 때만 기존 24시간 값을 유지한다. Microsoft refresh 응답에 새 refresh token이 없으면 기존 값을 유지하며, 새 값이 있으면 함께 저장한다. HTTP 응답 원문은 예외·로그에 넣지 않는다. 응답 크기는 64 KiB로 제한하고 redirect를 자동으로 따라가지 않는다. 기존 profile/entitlement의 제한된 5회 전송 재시도는 유지하되 인증 거절·계정 제한·429는 즉시 반환한다. 호스트는 이 재시도와 별개로 OAuth/게임 실행을 무한 반복하지 않아야 한다.
+
+### 취소와 실제 완료
+
+`AuthenticationRequest.cancel()`은 저장 시작 전에는 true, 저장 중이나 이미 끝난 요청에는 false다. true는 취소 요청의 수락이며 완료가 아니다. 네트워크가 interrupt를 즉시 처리하지 못하면 기존 connect 15초/read 30초 제한 안에서 종료를 기다린다. 호스트는 취소 결과에 관계없이 terminal callback을 기다린 뒤 단일 UI 작업 가드를 해제한다. 취소된 호스트 coroutine은 준비 작업과 마찬가지로 `NonCancellable` 종료 대기를 사용하고, 뒤늦은 성공을 받아 게임 실행을 재개하지 않는다.
+
+요청별 짧은 동기화로 취소와 저장 시작만 직렬화한다. 취소가 먼저 수락되면 이후 계정 저장·선택은 없다. 저장이 먼저 시작되면 취소를 거부하고 파일·선택 처리가 끝난 뒤 성공/실패를 전달한다. 실제 파일 IO 중에는 동기화 잠금을 잡지 않으며 backend session lease나 계정 전역 lock을 추가하지 않는다. `Future.cancel`의 done 상태를 실제 worker 완료로 사용하지 않는다.
+
+일반 뒤로가기와 회전은 위 계약으로 처리한다. 외부에서 Activity/task를 강제로 제거하면 ViewModel 정리 시 취소를 요청하지만, Activity Result만으로 이미 시작한 worker commit의 종료를 호스트가 반드시 기다린다고 보장하지는 않는다. 수락된 취소 뒤 저장 금지 규칙은 이 경우에도 유지한다. 강제 종료 전체를 추적하는 process registry는 도입하지 않았다.
+
+### 저장 슬롯과 기존 API 호환
+
+새 갱신 경로는 원래 선택한 opaque id 파일을 temp+atomic replace로 교체한다. profile UUID가 다른 후보·demo·잘못된 후보는 저장 전에 거부한다. Minecraft 이름이 바뀌어도 같은 슬롯의 이름·토큰만 갱신하고 `selectedVersion`과 선택 id를 유지하므로 옛 토큰 파일을 선택하거나 이름 변경 때 중복 파일을 만들지 않는다.
+
+OAuth는 동일한 profile UUID의 기존 슬롯을 재사용한다. 중복 슬롯이 이미 있으면 현재 선택을 우선하고 그렇지 않으면 정렬된 첫 항목을 사용한다. 신규 계정은 이름을 키로 쓰되 그 이름이 다른 계정이나 파일에 사용 중이면 새 UUID 키를 사용하여 기존 파일을 덮어쓰지 않는다. 전체 파일명 migration이나 기존 중복 파일 병합·삭제는 하지 않는다. 계정 파일 저장 뒤 선택 preference의 동기 commit을 확인한 후 완료를 전달한다. 두 저장소가 전원 차단까지 하나의 transaction이라고 보장하지 않으며 저장 실패 뒤 호스트는 snapshot을 다시 읽어야 한다.
+
+`MicrosoftBackgroundLogin.authenticate`는 라이브러리 내부 조합용 동기 교환으로 저장 전 후보만 반환한다. 새 runtime 경로는 계정 얼굴 캐시를 다운로드하지 않는다. 기존 `performLogin`은 username 기반 저장·얼굴 캐시와 저장 뒤 main callback 계약을 유지하며 Device Code API도 유지한다. 기존 void cancel은 best-effort이며 저장 중 rollback을 약속하지 않는다. upstream 독립 런처의 계정 spinner는 filename==username을 가정하므로 새 opaque 슬롯의 이름·선택·얼굴 표시까지 완전히 호환한다고 주장하지 않는다. runtime 게임 실행과 새 계정 API는 id와 JSON 내부 이름을 분리한다.
+
+### 검증
+
+JVM은 HTTP 교환의 mock 응답, 오류 분류·비밀값 제거·수명 계산, 요청 취소/commit 경합·실제 종료 대기를 확인한다. Android는 격리된 실제 계정 파일·preference와 fake 인증 후보로 유효 토큰 재사용·갱신·이름 변경·실패/취소 보존·OAuth 슬롯 재사용/충돌을 검증한다. LiveData/Lifecycle/ViewModelStore와 fake starter로 OAuth 모델·결과 Intent·회전 재사용을 확인하며 기존 비동기 wrapper의 main 실패 callback도 확인한다. 실제 WebView Activity에서의 Microsoft 로그인이나 실제 토큰 사용 가능성을 이 테스트로 대신하지 않는다. 호스트의 coroutine/UI 연결과 실제 로그인 검증은 후속 작업이다.

@@ -94,7 +94,8 @@ public class MinecraftAccount {
             }
             return acc;
         } catch(NullPointerException | IOException | JsonSyntaxException e) {
-            Log.e(MinecraftAccount.class.getName(), "Caught an exception while loading the profile",e);
+            // 파서의 원문 미리보기에는 저장한 토큰이 포함될 수 있다.
+            Log.e(MinecraftAccount.class.getName(), "Caught an exception while loading the profile");
             return null;
         }
     }
