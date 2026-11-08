@@ -74,6 +74,35 @@ public final class AmethystRuntime {
         return account != null && account.isLocal() ? account.username : null;
     }
 
+    /** 저장 계정의 표시 정보만 반환한다. 파일 IO이므로 호스트의 작업 스레드에서 호출한다. */
+    public static List<AccountSummary> accounts(Context context) throws IOException {
+        AccountStore store = accountStore(context);
+        return store.list(PojavProfile.getCurrentProfileName(context));
+    }
+
+    /** 존재하고 읽을 수 있는 저장 계정을 선택한다. 인증 갱신은 별도 작업이다. */
+    public static void selectAccount(Context context, String id) throws IOException {
+        AccountStore store = accountStore(context);
+        store.get(id, PojavProfile.getCurrentProfileName(context));
+        PojavProfile.setCurrentProfile(context, id);
+    }
+
+    /** 로컬 계정 파일을 삭제한다. 현재 계정을 삭제하면 선택을 해제하고 다른 계정을 자동 선택하지 않는다. */
+    public static void deleteAccount(Context context, String id) throws IOException {
+        AccountStore store = accountStore(context);
+        String selectedId = PojavProfile.getCurrentProfileName(context);
+        store.delete(id);
+        if (id.equals(selectedId)) {
+            PojavProfile.setCurrentProfile(context, null);
+        }
+    }
+
+    private static AccountStore accountStore(Context context) {
+        // 계정 조회에 게임 저장소·렌더러·런타임 초기화는 필요하지 않다.
+        Tools.initEarlyConstants(context);
+        return new AccountStore(new File(Tools.DIR_ACCOUNT_NEW));
+    }
+
     public static void createOfflineAccount(Context context, String name) throws java.io.IOException {
         if (!name.matches("[A-Za-z0-9_]{3,16}")) {
             throw new IllegalArgumentException("Invalid offline player name");
