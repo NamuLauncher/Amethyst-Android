@@ -1,15 +1,6 @@
 name: Android CI
 
 on:
-  pull_request:
-    branches-ignore:
-      - 'l10n_v3_openjdk'
-      - 'runtime-library'
-    types: [ opened, reopened ]
-  push:
-    branches-ignore:
-      - 'l10n_v3_openjdk'
-      - 'runtime-library'
   workflow_dispatch:
 
 jobs:
