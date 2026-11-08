@@ -12,6 +12,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.MalformedURLException;
+import java.util.function.LongConsumer;
 
 public class DownloadMirror {
     public static final int DOWNLOAD_CLASS_LIBRARIES = 0;
@@ -37,15 +38,45 @@ public class DownloadMirror {
      */
     public static void downloadFileMirrored(int downloadClass, String urlInput, File outputFile,
                                             @Nullable byte[] buffer, Tools.DownloaderFeedback monitor) throws IOException {
+        downloadFileMirrored(
+                downloadClass,
+                urlInput,
+                outputFile,
+                buffer,
+                monitor,
+                null
+        );
+    }
+
+    /** 미러에서 원본으로 전환해도 각 요청에서 실제 읽은 본문 증분만 전달한다. */
+    public static void downloadFileMirrored(
+            int downloadClass,
+            String urlInput,
+            File outputFile,
+            @Nullable byte[] buffer,
+            Tools.DownloaderFeedback monitor,
+            @Nullable LongConsumer receivedBytes
+    ) throws IOException {
         try {
-            DownloadUtils.downloadFileMonitored(getMirrorMapping(downloadClass, urlInput),
-                    outputFile, buffer, monitor);
+            DownloadUtils.downloadFileMonitored(
+                    getMirrorMapping(downloadClass, urlInput),
+                    outputFile,
+                    buffer,
+                    monitor,
+                    receivedBytes
+            );
             return;
         }catch (FileNotFoundException e) {
             Log.w("DownloadMirror", "Cannot find the file on the mirror", e);
             Log.i("DownloadMirror", "Falling back to default source");
         }
-        DownloadUtils.downloadFileMonitored(urlInput, outputFile, buffer, monitor);
+        DownloadUtils.downloadFileMonitored(
+                urlInput,
+                outputFile,
+                buffer,
+                monitor,
+                receivedBytes
+        );
     }
 
     /**

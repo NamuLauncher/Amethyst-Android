@@ -53,6 +53,8 @@ public class MinecraftDownloader {
     private AtomicLong mProcessedFileCounter;
     private AtomicLong mProcessedSizeCounter; // Total bytes of processed files (passed SHA1 or downloaded)
     private AtomicLong mInternetUsageCounter; // How many bytes downloaded over Internet
+    // 기존 속도 추정치와 별도로 게임 파일 응답의 실제 read 증분만 누적한다.
+    private AtomicLong mReceivedFileBytes;
     private long mTotalFileCount;
     private long mTotalSize;
     private File mSourceJarFile; // The source client JAR picked during the inheritance process
@@ -177,6 +179,7 @@ public class MinecraftDownloader {
         mProcessedFileCounter = new AtomicLong(0);
         mProcessedSizeCounter = new AtomicLong(0);
         mInternetUsageCounter = new AtomicLong(0);
+        mReceivedFileBytes = new AtomicLong(0);
         mDownloaderThreadException = new AtomicReference<>(null);
         mUseFileCounter = false;
 
@@ -226,7 +229,9 @@ public class MinecraftDownloader {
                 GamePreparationProgress.Stage.GAME_FILES,
                 GamePreparationProgress.Unit.ITEMS,
                 dlFileCounter,
-                mTotalFileCount
+                mTotalFileCount,
+                false,
+                mReceivedFileBytes.get()
         ));
         ProgressLayout.setProgress(ProgressLayout.DOWNLOAD_MINECRAFT, progress,
                 R.string.newdl_downloading_game_files, dlFileCounter,
@@ -245,7 +250,9 @@ public class MinecraftDownloader {
                 GamePreparationProgress.Stage.GAME_FILES,
                 GamePreparationProgress.Unit.BYTES,
                 dlFileSize,
-                mTotalSize
+                mTotalSize,
+                false,
+                mReceivedFileBytes.get()
         ));
         ProgressLayout.setProgress(ProgressLayout.DOWNLOAD_MINECRAFT, progress,
                 R.string.newdl_downloading_game_files_size, dlSizeMegabytes, dlTotalMegabytes, speed);
@@ -661,8 +668,14 @@ public class MinecraftDownloader {
         private void downloadFile() throws Exception {
             try {
                 DownloadUtils.ensureSha1(mTargetPath, mTargetSha1, () -> {
-                    DownloadMirror.downloadFileMirrored(mDownloadClass, mTargetUrl, mTargetPath,
-                            getLocalBuffer(), this);
+                    DownloadMirror.downloadFileMirrored(
+                            mDownloadClass,
+                            mTargetUrl,
+                            mTargetPath,
+                            getLocalBuffer(),
+                            this,
+                            mReceivedFileBytes::addAndGet
+                    );
                     return null;
                 });
             } catch (Exception e) {

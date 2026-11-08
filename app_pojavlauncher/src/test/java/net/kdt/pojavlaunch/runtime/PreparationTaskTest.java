@@ -18,6 +18,39 @@ import static org.junit.Assert.*;
 
 public class PreparationTaskTest {
     @Test
+    public void measuredBodyBytesSurviveCancellableProgressDelivery() {
+        RecordingListener listener = new RecordingListener();
+        PreparationTask request = new PreparationTask(Runnable::run, listener);
+        request.start(Runnable::run, () -> request.progress(new GamePreparationProgress(
+                GamePreparationProgress.Stage.GAME_FILES,
+                GamePreparationProgress.Unit.ITEMS,
+                3,
+                5,
+                false,
+                2048L
+        )));
+
+        assertTrue(listener.progress.cancellable);
+        assertEquals(Long.valueOf(2048), listener.progress.receivedBytes);
+        assertEquals(GamePreparationProgress.Unit.ITEMS, listener.progress.unit);
+        assertEquals(3, listener.progress.completed);
+        assertEquals(5, listener.progress.total);
+        assertEquals(Arrays.asList("progress", "ready"), listener.events);
+    }
+
+    @Test
+    public void legacyAndUnmeasuredProgressDoNotInventZeroReceivedBytes() {
+        GamePreparationProgress oldProgress = progress(GamePreparationProgress.Stage.METADATA);
+        assertNull(oldProgress.receivedBytes);
+        RecordingListener listener = new RecordingListener();
+        PreparationTask request = new PreparationTask(Runnable::run, listener);
+        request.start(Runnable::run, () -> request.progress(oldProgress));
+
+        assertNull(listener.progress.receivedBytes);
+        assertEquals(-1, listener.progress.total);
+    }
+
+    @Test
     public void cancellationBeforeWorkerStartsNeverRunsTheAction() {
         BlockingQueue<Runnable> callbacks = new LinkedBlockingQueue<>();
         BlockingQueue<Runnable> workers = new LinkedBlockingQueue<>();

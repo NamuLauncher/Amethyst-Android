@@ -82,7 +82,8 @@ final class PreparationTask implements AmethystRuntime.PreparationRequest {
                 progress.unit,
                 progress.completed,
                 progress.total,
-                canCancel
+                canCancel,
+                progress.receivedBytes
         ));
     }
 
