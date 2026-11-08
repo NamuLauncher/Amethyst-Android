@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Process;
+import android.os.SystemClock;
 import android.util.Log;
 import androidx.core.content.ContextCompat;
 import java.io.File;
@@ -13,6 +14,9 @@ import java.io.IOException;
 import java.io.BufferedWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import net.kdt.pojavlaunch.Logger;
 import net.kdt.pojavlaunch.services.GameService;
 
@@ -25,6 +29,8 @@ public final class RuntimeGameSession {
     private static GameRunRecorder recorder;
     private static boolean loggingStarted;
     private static boolean hostRequested;
+    private static final long CHECKPOINT_INTERVAL_MILLIS = 30_000;
+    private static ScheduledExecutorService checkpoints;
 
     private RuntimeGameSession() {}
 
@@ -57,7 +63,7 @@ public final class RuntimeGameSession {
         }
         application = context.getApplicationContext();
         store = requestedStore;
-        recorder = new GameRunRecorder(store);
+        recorder = new GameRunRecorder(store, SystemClock::elapsedRealtime);
         ContextCompat.registerReceiver(
                 application,
                 new BroadcastReceiver() {
@@ -109,6 +115,7 @@ public final class RuntimeGameSession {
 
     public static synchronized void onJvmStarted() {
         update(() -> recorder.jvmStarted(System.currentTimeMillis()));
+        startCheckpoints();
     }
 
     public static synchronized void onFirstFrame() {
@@ -120,11 +127,13 @@ public final class RuntimeGameSession {
     }
 
     public static synchronized boolean onFailure(Throwable failure) {
+        long failedAt = System.currentTimeMillis();
+        long elapsedAtFailure = SystemClock.elapsedRealtime();
         // 예외 메시지에는 계정 토큰이나 JVM 인자가 들어갈 수 있어 타입만 기록한다.
         if (recorder != null && !recorder.snapshot().isTerminal()) {
             writeFailureFrames(failure);
         }
-        return finish(() -> recorder.failed(failure.getClass().getName(), System.currentTimeMillis())) || hostRequested;
+        return finish(() -> recorder.failed(failure.getClass().getName(), failedAt, elapsedAtFailure)) || hostRequested;
     }
 
     private static void writeFailureFrames(Throwable failure) {
@@ -150,12 +159,53 @@ public final class RuntimeGameSession {
     }
 
     private static boolean finish(Update action) {
+        stopCheckpoints();
         boolean active = update(action);
         if (active) {
             // onStartCommand 반환 전에 종료되더라도 서비스가 실행을 되살리지 않도록 한다.
             application.stopService(new Intent(application, GameService.class));
         }
         return active;
+    }
+
+    private static void startCheckpoints() {
+        if (checkpoints != null || recorder == null || recorder.snapshot().isTerminal() ||
+                recorder.snapshot().jvmElapsedMillis == null) {
+            return;
+        }
+        try {
+            checkpoints = Executors.newSingleThreadScheduledExecutor(action -> {
+                Thread thread = new Thread(action, "AmethystGameTime");
+                thread.setDaemon(true);
+                return thread;
+            });
+            checkpoints.scheduleWithFixedDelay(
+                    RuntimeGameSession::checkpoint,
+                    CHECKPOINT_INTERVAL_MILLIS,
+                    CHECKPOINT_INTERVAL_MILLIS,
+                    TimeUnit.MILLISECONDS
+            );
+        } catch (RuntimeException failure) {
+            stopCheckpoints();
+            Log.e("AmethystRuntime", "게임 경과시간의 주기 저장을 시작하지 못했습니다");
+        }
+    }
+
+    private static synchronized void checkpoint() {
+        try {
+            // 호스트 화면이나 프로세스의 수명과 무관하게 게임 프로세스에서 기록한다.
+            update(() -> recorder.checkpoint(System.currentTimeMillis()));
+        } catch (RuntimeException failure) {
+            // 한 번의 저장·알림 실패로 예약 작업이 사라지거나 게임이 종료되지 않게 한다.
+            Log.e("AmethystRuntime", "게임 경과시간을 저장하지 못했습니다");
+        }
+    }
+
+    private static void stopCheckpoints() {
+        if (checkpoints != null) {
+            checkpoints.shutdown();
+            checkpoints = null;
+        }
     }
 
     private static boolean update(Update action) {

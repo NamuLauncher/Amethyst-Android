@@ -97,22 +97,59 @@ public final class RuntimeGameEventsTest {
         assertEquals(GameRunSnapshot.Stage.STARTING, attached.stage);
         assertNull(attached.jvmStartedAt);
         assertNull(attached.firstFrameAt);
+        assertNull(attached.jvmElapsedMillis);
 
         command(RuntimeProbeService.JVM_STARTED);
         GameRunSnapshot started = awaitStage(GameRunSnapshot.Stage.JVM_STARTED);
         assertNotNull(started.jvmStartedAt);
         assertNull(started.firstFrameAt);
+        assertEquals(Long.valueOf(0), started.jvmElapsedMillis);
 
         command(RuntimeProbeService.FIRST_FRAME);
         GameRunSnapshot frame = awaitStage(GameRunSnapshot.Stage.FIRST_FRAME);
         assertEquals(started.jvmStartedAt, frame.jvmStartedAt);
         assertNotNull(frame.firstFrameAt);
         assertFalse(frame.isTerminal());
+        assertNotNull(frame.jvmElapsedMillis);
+        assertTrue(frame.jvmElapsedMillis >= started.jvmElapsedMillis);
         awaitNotification();
 
         assertTrue(AmethystRuntime.stopGame(context, runId));
         awaitStage(GameRunSnapshot.Stage.STOPPED);
         awaitNoGameProcess();
+    }
+
+    @Test
+    public void gameProcessCheckpointsElapsedTimeWhileTheHostHasNoEventReceiver() throws Exception {
+        attach();
+        command(RuntimeProbeService.JVM_STARTED);
+        GameRunSnapshot started = awaitStage(GameRunSnapshot.Stage.JVM_STARTED);
+        assertEquals(Long.valueOf(0), started.jvmElapsedMillis);
+        context.unregisterReceiver(receiver);
+        receiver = null;
+
+        // 기본 30초 주기를 실제로 기다린다. 호스트의 알림 수신이나 추가 게임 콜백은 없다.
+        long deadline = SystemClock.uptimeMillis() + 40_000;
+        GameRunSnapshot checkpoint = null;
+        while (SystemClock.uptimeMillis() < deadline) {
+            failOnProbeError();
+            GameRunSnapshot observed = AmethystRuntime.readGameRun(directory);
+            if (observed != null && observed.jvmElapsedMillis != null && observed.jvmElapsedMillis > 0) {
+                checkpoint = observed;
+                break;
+            }
+            SystemClock.sleep(50);
+        }
+        assertNotNull("게임 프로세스가 경과시간 체크포인트를 기록하지 않았습니다", checkpoint);
+        assertEquals(GameRunSnapshot.Stage.JVM_STARTED, checkpoint.stage);
+        assertEquals(started.jvmStartedAt, checkpoint.jvmStartedAt);
+        assertTrue(checkpoint.jvmElapsedMillis >= 30_000);
+
+        assertTrue(AmethystRuntime.stopGame(context, runId));
+        GameRunSnapshot stopped = awaitStage(GameRunSnapshot.Stage.STOPPED);
+        awaitNoGameProcess();
+        assertTrue(stopped.jvmElapsedMillis >= checkpoint.jvmElapsedMillis);
+        assertEquals(stopped.jvmElapsedMillis, new GameRunStore(directory).read().jvmElapsedMillis);
     }
 
     @Test
@@ -141,6 +178,7 @@ public final class RuntimeGameEventsTest {
         assertEquals(IOException.class.getName(), failed.failureType);
         assertNull(failed.exitCode);
         assertNull(failed.jvmStartedAt);
+        assertNull(failed.jvmElapsedMillis);
         assertTrue(failed.isTerminal());
         assertEquals(failed.failureType, AmethystRuntime.readGameRun(directory).failureType);
         String diagnostic = readText(AmethystRuntime.gameFailureFile(directory));
@@ -226,6 +264,8 @@ public final class RuntimeGameEventsTest {
         assertEquals(Integer.valueOf(exitCode), finished.exitCode);
         assertEquals(signal, finished.signal);
         assertTrue(finished.isTerminal());
+        assertNotNull(finished.jvmElapsedMillis);
+        assertTrue(finished.jvmElapsedMillis >= 0);
         assertEquals(finished.stage, AmethystRuntime.readGameRun(directory).stage);
         ActivityManager manager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
         for (ActivityManager.AppTask task : manager.getAppTasks()) {
