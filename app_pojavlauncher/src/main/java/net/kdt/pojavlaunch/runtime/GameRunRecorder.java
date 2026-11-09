@@ -10,6 +10,7 @@ final class GameRunRecorder {
     private final LongSupplier elapsedClock;
     private GameRunSnapshot current;
     private Long jvmStartTick;
+    private Long processStartTick;
 
     GameRunRecorder(GameRunStore store) throws IOException {
         this(store, () -> TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));
@@ -38,6 +39,7 @@ final class GameRunRecorder {
         if (current.processId != 0) {
             throw new IOException("기존 실행 기록을 다른 게임 프로세스에 재사용할 수 없습니다");
         }
+        processStartTick = elapsedClock.getAsLong();
         return publish(new GameRunSnapshot(
                 current.runId,
                 current.stage,
@@ -49,7 +51,8 @@ final class GameRunRecorder {
                 null,
                 false,
                 null,
-                current.jvmElapsedMillis
+                current.jvmElapsedMillis,
+                0L
         ));
     }
 
@@ -69,7 +72,8 @@ final class GameRunRecorder {
                 null,
                 false,
                 null,
-                0L
+                0L,
+                processAliveMillis()
         ));
     }
 
@@ -88,12 +92,13 @@ final class GameRunRecorder {
                 null,
                 false,
                 null,
-                elapsedMillis(elapsedClock.getAsLong())
+                elapsedMillis(elapsedClock.getAsLong()),
+                processAliveMillis()
         ));
     }
 
     synchronized boolean checkpoint(long now) throws IOException {
-        if (jvmStartTick == null || current.isTerminal()) {
+        if ((processStartTick == null && jvmStartTick == null) || current.isTerminal()) {
             return false;
         }
         return publish(new GameRunSnapshot(
@@ -107,7 +112,8 @@ final class GameRunRecorder {
                 null,
                 false,
                 null,
-                elapsedMillis(elapsedClock.getAsLong())
+                elapsedMillis(elapsedClock.getAsLong()),
+                processAliveMillis()
         ));
     }
 
@@ -170,8 +176,17 @@ final class GameRunRecorder {
                 exitCode,
                 signal,
                 failureType,
-                elapsedMillis(elapsedAtEnd)
+                elapsedMillis(elapsedAtEnd),
+                current.processAliveMillis
         ));
+    }
+
+    private Long processAliveMillis() {
+        if (processStartTick == null) {
+            // 다시 읽은 기록에서는 프로세스 시작 시각을 추측하지 않는다.
+            return current.processAliveMillis;
+        }
+        return Math.max(0, elapsedClock.getAsLong() - processStartTick);
     }
 
     private Long elapsedMillis(long now) {

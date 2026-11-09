@@ -85,6 +85,7 @@ public final class RuntimeGameSession {
             System.exit(1);
         });
         recorder.attachProcess(Process.myPid(), System.currentTimeMillis());
+        startCheckpoints();
         notifyHost();
     }
 
@@ -170,7 +171,7 @@ public final class RuntimeGameSession {
 
     private static void startCheckpoints() {
         if (checkpoints != null || recorder == null || recorder.snapshot().isTerminal() ||
-                recorder.snapshot().jvmElapsedMillis == null) {
+                recorder.snapshot().processAliveMillis == null) {
             return;
         }
         try {

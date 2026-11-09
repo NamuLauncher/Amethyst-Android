@@ -79,7 +79,8 @@ final class GameRunStore {
                     optionalInteger(values, "exitCode"),
                     booleanValue(values, "signal"),
                     values.getProperty("failureType"),
-                    optionalLong(values, "jvmElapsedMillis")
+                    optionalLong(values, "jvmElapsedMillis"),
+                    optionalLong(values, "processAliveMillis")
             );
         } catch (IllegalArgumentException failure) {
             throw new IOException("실행 상태 파일의 형식이 올바르지 않습니다", failure);
@@ -104,6 +105,9 @@ final class GameRunStore {
         }
         if (snapshot.jvmElapsedMillis != null) {
             values.setProperty("jvmElapsedMillis", snapshot.jvmElapsedMillis.toString());
+        }
+        if (snapshot.processAliveMillis != null) {
+            values.setProperty("processAliveMillis", snapshot.processAliveMillis.toString());
         }
         if (snapshot.exitCode != null) {
             values.setProperty("exitCode", snapshot.exitCode.toString());
