@@ -136,3 +136,25 @@ JVM은 HTTP 교환의 mock 응답, 오류 분류·비밀값 제거·수명 계�
 종료·실패·사용자 정지에서는 마지막 생존 표본을 보존하고 종료 시점의 시간으로 늘리지 않는다. 따라서 terminal의 경과시간만 보고 관측하지 않은 생존 성공을 합성하지 않는다. 기존 `jvmElapsedMillis`의 JVM 진입 기준 플레이 시간·첫 종료값 고정 의미는 유지한다. 이전 파일의 새 필드는 null이며 wall clock이나 JVM 시간으로 보충하지 않는다. 파일 저장 실패 시 호스트에는 마지막 성공한 파일만 보인다. 이후 성공한 저장은 메모리에서 실제 관측한 표본을 포함할 수 있다.
 
 이 필드는 범용 관측 정보다. 서비스별 성공 임계값·통계 전송·알림 정책은 호스트가 결정한다. 실제 JNI·게임 로딩·서버 접속 성공을 뜻하지 않는다.
+
+## Android 8 네이티브 초기화
+
+`androidnsbypass`는 공개 [Namu 포크](https://github.com/NamuLauncher/androidnsbypass)의 `ebab6b8919cf467649d814db965b405a9d68f671`로 고정한다. 원본 이력과 MIT/BSD 고지를 보존하며 `.gitmodules`의 공개 URL과 gitlink를 함께 사용한다. 호스트에 C 파일을 복사하거나 빌드 시 문자열 치환으로 수정하지 않는다.
+
+기존 라이브러리는 API 26에서 없는 `__loader_android_link_namespaces_all_libs`를 필수로 요구해, 게임을 시작하기 전에도 네이티브 의존성 초기화에서 프로세스를 코드 121로 종료했다. API 26·27에서 이 기능만 선택 처리하고 호출하면 false를 반환한다. 기본 namespace 생성·이름 지정 연결과 API 28 이상의 기존 필수 검사는 유지한다. Amethyst의 Turnip loader 경로는 이미 API 28 이상에서만 호출하므로 renderer 정책이나 최소 SDK를 바꾸지 않는다. [하위 라이브러리의 계약과 AOSP 근거](../androidnsbypass/docs/android-8-compatibility.md)를 참조한다.
+
+통합 Gradle adapter에도 하위 라이브러리의 계측 runner와 의존성을 선언해 다음 명령으로 실제 JNI 회귀 테스트를 실행한다. 실행할 기기의 `ANDROID_SERIAL`을 지정하며 두 기기를 순차 검증한다.
+
+```bash
+./gradlew :androidnsbypass:assembleDebug \
+  :androidnsbypass:assembleDebugAndroidTest \
+  :androidnsbypass:connectedDebugAndroidTest
+```
+
+API 26·35 x86_64에서 각각 두 계측이 실패·제외 없이 통과했다. namespace 생성·이름 지정 연결, libc dlopen/dlsym/dlclose와 API 26의 all-libs false/API 35의 true 반환을 확인했다. API 26에서 `ENABLE_TESTS=ON`을 별도 적용한 빌드도 두 계측을 통과하고 NULL 호출 없이 초기화를 마쳤다. 기존 자체 진단의 exported `default` namespace 조회는 실패 로그를 남기므로 모든 내부 probe의 성공으로 표현하지 않는다. 기본 빌드에서는 이 옵션을 켜지 않는다.
+
+이 검증은 Amethyst의 AGP 8.9.2·SDK 35·NDK 27.3.13750724 설정을 사용했다. 하위 저장소의 standalone AGP 9.3.2·SDK 36.1, API 27 및 ARM64 실기기는 실행하지 않았다. JNI 계측과 호스트의 Application·게임·렌더러 실제 실행 결과도 구분한다.
+
+API 26의 `RuntimeGameEventsTest`·`ApplicationContextTest` 12개도 실패·제외 없이 통과했다. 별도 프로세스의 상태·종료·정지·호스트 수신 및 Application의 Context 연결을 확인하며 실제 게임을 기동하는 테스트는 아니다. 런타임 AAR의 `libpojavexec.so`는 arm64-v8a·x86_64 두 ABI로 빌드됐다. 포함된 기존 prebuilt의 추가 ABI와 이 두 ABI의 코어 빌드 범위를 구분한다.
+
+함께 실행한 `:app_pojavlauncher:lintDebug`는 오류 86개·경고 300개로 실패했다. 기준 `8db2a63`에서도 같은 명령을 실행해 ID·심각도·메시지·소스 위치가 386건 모두 동일함을 확인했다. 이 변경에서 새 lint 오류는 없으며 전체 명령을 성공으로 표시하지 않는다. 기존 독립 런처 화면의 OnClick·번역·권한 등 전반을 고치거나 baseline/suppress 규칙으로 숨기는 변경은 포함하지 않는다. 이미 완료한 계측 12개와 AAR 빌드 결과는 이 lint 실패와 분리해 기록한다.
