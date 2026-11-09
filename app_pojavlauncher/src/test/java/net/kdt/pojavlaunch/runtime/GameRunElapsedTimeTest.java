@@ -29,7 +29,7 @@ public final class GameRunElapsedTimeTest {
         GameRunRecorder recorder = new GameRunRecorder(store, elapsed::get);
 
         recorder.attachProcess(123, 100_500);
-        assertFalse(recorder.checkpoint(101_000));
+        assertTrue(recorder.checkpoint(101_000));
         assertNull(store.read().jvmElapsedMillis);
         elapsed.set(20_000);
         assertTrue(recorder.jvmStarted(102_000));

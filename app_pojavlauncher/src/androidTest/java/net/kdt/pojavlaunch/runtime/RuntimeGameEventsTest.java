@@ -143,13 +143,40 @@ public final class RuntimeGameEventsTest {
         assertNotNull("게임 프로세스가 경과시간 체크포인트를 기록하지 않았습니다", checkpoint);
         assertEquals(GameRunSnapshot.Stage.JVM_STARTED, checkpoint.stage);
         assertEquals(started.jvmStartedAt, checkpoint.jvmStartedAt);
-        assertTrue(checkpoint.jvmElapsedMillis >= 30_000);
+        assertTrue(checkpoint.processAliveMillis >= 30_000);
+        assertTrue(checkpoint.processAliveMillis >= checkpoint.jvmElapsedMillis);
 
         assertTrue(AmethystRuntime.stopGame(context, runId));
         GameRunSnapshot stopped = awaitStage(GameRunSnapshot.Stage.STOPPED);
         awaitNoGameProcess();
         assertTrue(stopped.jvmElapsedMillis >= checkpoint.jvmElapsedMillis);
         assertEquals(stopped.jvmElapsedMillis, new GameRunStore(directory).read().jvmElapsedMillis);
+    }
+
+    @Test
+    public void gameProcessRecordsLiveTimeBeforeJvmEntryWithoutAHostReceiver() throws Exception {
+        attach();
+        context.unregisterReceiver(receiver);
+        receiver = null;
+        long deadline = SystemClock.uptimeMillis() + 40_000;
+        GameRunSnapshot checkpoint = null;
+        while (SystemClock.uptimeMillis() < deadline) {
+            failOnProbeError();
+            GameRunSnapshot observed = AmethystRuntime.readGameRun(directory);
+            if (observed != null && observed.processAliveMillis != null && observed.processAliveMillis >= 30_000) {
+                checkpoint = observed;
+                break;
+            }
+            SystemClock.sleep(50);
+        }
+        assertNotNull("JVM 진입 전 생존 체크포인트가 기록되지 않았습니다", checkpoint);
+        assertEquals(GameRunSnapshot.Stage.STARTING, checkpoint.stage);
+        assertNull(checkpoint.jvmElapsedMillis);
+        assertTrue(AmethystRuntime.stopGame(context, runId));
+        GameRunSnapshot stopped = awaitStage(GameRunSnapshot.Stage.STOPPED);
+        awaitNoGameProcess();
+        assertEquals(checkpoint.processAliveMillis, stopped.processAliveMillis);
+        assertNull(stopped.jvmElapsedMillis);
     }
 
     @Test

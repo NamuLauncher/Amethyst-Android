@@ -128,3 +128,11 @@ OAuth는 동일한 profile UUID의 기존 슬롯을 재사용한다. 중복 슬�
 ### 검증
 
 JVM은 HTTP 교환의 mock 응답, 오류 분류·비밀값 제거·수명 계산, 요청 취소/commit 경합·실제 종료 대기를 확인한다. Android는 격리된 실제 계정 파일·preference와 fake 인증 후보로 유효 토큰 재사용·갱신·이름 변경·실패/취소 보존·OAuth 슬롯 재사용/충돌을 검증한다. LiveData/Lifecycle/ViewModelStore와 fake starter로 OAuth 모델·결과 Intent·회전 재사용을 확인하며 기존 비동기 wrapper의 main 실패 callback도 확인한다. 실제 WebView Activity에서의 Microsoft 로그인이나 실제 토큰 사용 가능성을 이 테스트로 대신하지 않는다. 호스트의 coroutine/UI 연결과 실제 로그인 검증은 후속 작업이다.
+
+## 프로세스 생존 관측
+
+`GameRunSnapshot.processAliveMillis`는 게임 프로세스의 `attachProcess` 연결부터 마지막 실제 생존 관측까지 단조 시계로 계산한 nullable 밀리초다. OS 프로세스 fork 시각을 추측하지 않는다. 연결·JVM 진입·첫 프레임·30초 체크포인트에서 갱신하며, 체크포인트는 JVM 진입 전에도 게임 프로세스에서 실행한다. 호스트 화면·수신기가 없어도 저장한다.
+
+종료·실패·사용자 정지에서는 마지막 생존 표본을 보존하고 종료 시점의 시간으로 늘리지 않는다. 따라서 terminal의 경과시간만 보고 관측하지 않은 생존 성공을 합성하지 않는다. 기존 `jvmElapsedMillis`의 JVM 진입 기준 플레이 시간·첫 종료값 고정 의미는 유지한다. 이전 파일의 새 필드는 null이며 wall clock이나 JVM 시간으로 보충하지 않는다. 파일 저장 실패 시 호스트에는 마지막 성공한 파일만 보인다. 이후 성공한 저장은 메모리에서 실제 관측한 표본을 포함할 수 있다.
+
+이 필드는 범용 관측 정보다. 서비스별 성공 임계값·통계 전송·알림 정책은 호스트가 결정한다. 실제 JNI·게임 로딩·서버 접속 성공을 뜻하지 않는다.

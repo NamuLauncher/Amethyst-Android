@@ -22,6 +22,8 @@ public final class GameRunSnapshot {
     public final Long firstFrameAt;
     /** JVM 진입부터 단조 시계로 관측한 누적 밀리초이며, 이전 기록과 진입 전에는 null이다. */
     public final Long jvmElapsedMillis;
+    /** 프로세스 연결부터 마지막 생존 관측까지의 단조 밀리초. 종료 시에는 늘리지 않으며 이전 기록은 null이다. */
+    public final Long processAliveMillis;
     public final Integer exitCode;
     public final boolean signal;
     /** 오류 메시지나 인자 대신 예외 클래스 이름만 전달한다. */
@@ -40,10 +42,43 @@ public final class GameRunSnapshot {
             String failureType,
             Long jvmElapsedMillis
     ) {
+        this(
+                runId,
+                stage,
+                startedAt,
+                updatedAt,
+                processId,
+                jvmStartedAt,
+                firstFrameAt,
+                exitCode,
+                signal,
+                failureType,
+                jvmElapsedMillis,
+                null
+        );
+    }
+
+    GameRunSnapshot(
+            String runId,
+            Stage stage,
+            long startedAt,
+            long updatedAt,
+            int processId,
+            Long jvmStartedAt,
+            Long firstFrameAt,
+            Integer exitCode,
+            boolean signal,
+            String failureType,
+            Long jvmElapsedMillis,
+            Long processAliveMillis
+    ) {
         validateRunId(runId);
         this.stage = Objects.requireNonNull(stage, "stage");
         if (processId < 0) {
             throw new IllegalArgumentException("게임 프로세스 ID가 올바르지 않습니다");
+        }
+        if (processAliveMillis != null && (processAliveMillis < 0 || processId == 0)) {
+            throw new IllegalArgumentException("생존 경과시간에는 프로세스 ID와 음수가 아닌 값이 필요합니다");
         }
         if (firstFrameAt != null && jvmStartedAt == null) {
             throw new IllegalArgumentException("첫 프레임에는 JVM 시작 기록이 필요합니다");
@@ -77,6 +112,7 @@ public final class GameRunSnapshot {
         this.jvmStartedAt = jvmStartedAt;
         this.firstFrameAt = firstFrameAt;
         this.jvmElapsedMillis = jvmElapsedMillis;
+        this.processAliveMillis = processAliveMillis;
         this.exitCode = exitCode;
         this.signal = signal;
         this.failureType = failureType;
