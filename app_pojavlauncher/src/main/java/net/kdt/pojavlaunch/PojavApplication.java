@@ -94,7 +94,9 @@ public class PojavApplication extends Application {
 
 	@Override
     protected void attachBaseContext(Context base) {
-        super.attachBaseContext(LocaleUtils.setLocale(base));
+        // Android의 manifest receiver는 Application의 원래 ContextImpl을 직접 사용한다.
+        super.attachBaseContext(base);
+        LocaleUtils.setLocale(base);
     }
 
     @Override

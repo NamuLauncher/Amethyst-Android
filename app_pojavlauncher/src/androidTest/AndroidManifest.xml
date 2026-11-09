@@ -3,9 +3,12 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <application
-        android:name="android.app.Application"
+        android:name="net.kdt.pojavlaunch.RuntimeTestApplication"
         tools:replace="android:name"
         tools:remove="android:process">
+        <receiver
+            android:name="net.kdt.pojavlaunch.ApplicationContextProbeReceiver"
+            android:exported="false" />
         <service
             android:name="net.kdt.pojavlaunch.runtime.RuntimeProbeService"
             android:exported="false"
