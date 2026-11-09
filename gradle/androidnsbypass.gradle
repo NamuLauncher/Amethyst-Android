@@ -5,6 +5,7 @@ android {
     ndkVersion '27.3.13750724'
     defaultConfig {
         minSdk 21
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         externalNativeBuild { cmake { arguments '-DANDROID_STL=c++_shared' } }
     }
     buildFeatures { prefabPublishing true }
@@ -14,4 +15,9 @@ android {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
     }
+}
+
+dependencies {
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
 }
