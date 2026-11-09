@@ -39,6 +39,12 @@ GitHub Actions를 사용할 수 없는 동안 필요한 검증은 로컬에서 �
 
 호스트는 머지한 공개 포크 커밋을 명시적으로 고정하고 해당 커밋으로 검증한다. 소스·고지·재결합 방법을 유지하며 AAR 의존성 선언만으로 배포 요건을 충족했다고 간주하지 않는다.
 
+## Application Context와 manifest receiver
+
+`PojavApplication`은 Android가 전달한 기본 Context를 유지하고 기존 언어 설정을 해당 리소스에 적용한다. Application의 기본 Context를 언어용 wrapper로 바꾸면 Android가 manifest receiver를 생성하기 전에 `ClassCastException`으로 종료한다. [Android 15의 실제 전달 경로](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-15.0.0_r1/core/java/android/app/ActivityThread.java#L4426)는 기본 Context를 `ContextImpl`로 직접 사용한다. Activity의 언어 wrapper와 강제 영어 설정은 유지한다.
+
+Android 계측은 같은 Application 연결 경로를 사용하는 테스트 앱에서 실제 manifest receiver 전달을 확인하고, 강제 영어 ON/OFF에서도 기본 Context와 리소스 언어를 확인한다. 계측 앱의 `onCreate`는 게임 준비·전역 크래시 UI를 실행하지 않으며, 실제 호스트의 Application 초기화·알림 연결은 호스트 통합 검증에서 확인한다.
+
 ## 호스트 로깅 설정 인수
 
 호스트는 `AmethystRuntime.startPreparation` 또는 `prepareGame`의 `jvmArguments`로 `-Dlog4j.configurationFile=<경로>`를 전달할 수 있다. 게임 실행 인수를 조립할 때 호스트가 지정한 이 속성은 런타임·버전에서 선택한 기본 log4j 설정을 대체한다. 호스트 배열 안에 같은 속성이 여러 번 있으면 마지막 항목 하나를 남기며, 공백이 있는 경로도 인수 하나로 유지한다. `-Dlog4j.configurationFile` 또는 `-Dlog4j.configurationFile=`처럼 빈 값을 명시한 경우도 같은 규칙을 따른다.
