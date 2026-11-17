@@ -31,6 +31,8 @@ public abstract class BaseActivity extends AppCompatActivity {
     @Override
     public void onConfigurationChanged(@NonNull Configuration configuration) {
         super.onConfigurationChanged(configuration);
+        // 프레임워크가 새 구성에 기기 언어를 다시 적용할 수 있다.
+        LocaleUtils.setLocale(this);
         int newNightMode = RuntimeTheme.nightMode(getResources().getConfiguration());
         if (nightMode == newNightMode) {
             return;
@@ -56,6 +58,7 @@ public abstract class BaseActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        LocaleUtils.setLocale(this);
         nightMode = RuntimeTheme.nightMode(getResources().getConfiguration());
         Tools.setFullscreen(this, setFullscreen());
         new RuntimeTheme(this).applySystemBars(getWindow());

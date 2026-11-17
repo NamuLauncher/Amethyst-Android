@@ -63,6 +63,7 @@ public final class RuntimeThemeTest {
             int lightPanel = panelColor(probe);
             instrumentation.runOnMainSync(() -> {
                 assertTrue(ColorUtils.calculateContrast(lightText, lightPanel) >= 4.5);
+                assertEquals(Locale.ENGLISH, probe.getResources().getConfiguration().getLocales().get(0));
                 gestures.setChecked(!originalGestures);
                 assertEquals(!originalGestures, LauncherPreferences.PREF_DISABLE_GESTURES);
                 probe.input.setText("Test value");
@@ -91,6 +92,7 @@ public final class RuntimeThemeTest {
             instrumentation.runOnMainSync(() -> {
                 assertEquals(lightText, label.getCurrentTextColor());
                 assertEquals(lightPanel, panelColor(probe));
+                assertEquals(Locale.ENGLISH, probe.getResources().getConfiguration().getLocales().get(0));
                 probe.dialog.dismiss();
                 probe.settings.cancel();
                 assertEquals(originalGestures, LauncherPreferences.PREF_DISABLE_GESTURES);

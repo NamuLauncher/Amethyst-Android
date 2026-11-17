@@ -12,6 +12,7 @@
 
 - `:app_pojavlauncher:assembleDebug`와 `:app_pojavlauncher:assembleDebugAndroidTest`가 통과했다. API 35 에뮬레이터에서 `RuntimeThemeTest`와 `ApplicationContextTest`의 계측 3개가 통과했다. 시스템 설정을 바꿔 라이트 → 다크 → 라이트 전환을 확인했으며, 같은 빠른 설정 뷰와 열린 대화상자가 색상을 갱신하고 입력값과 취소 전 임시 설정값을 보존했다. 강제 영어 설정에서도 전환이 적용됐다.
 - namu-android #39 작업본의 임시 복사본을 런타임과 함께 빌드해 `:app:processDebugResources`를 통과했다. 호스트 병합 manifest에서 게임·설치·편집·계정 Activity의 런타임 테마와 `:game` 프로세스 선언을 확인했다.
+- 한국어로 설정된 Galaxy 실기기(API 37)에서 다크 모드로 전환할 때 Activity 리소스 언어가 한국어로 돌아오는 것을 확인했다. Activity 생성 직후와 구성 변경 직후에 기존 강제 영어 처리를 다시 적용했다. 수정 후 같은 기기에서 계측 3개가 통과했고, 초기 라이트 모드와 양방향 전환에서 영어·색상·편집값을 확인했다.
 
 ## 코드에서 확인한 내용
 
