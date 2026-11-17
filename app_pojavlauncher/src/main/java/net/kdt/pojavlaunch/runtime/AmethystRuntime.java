@@ -227,6 +227,39 @@ public final class AmethystRuntime {
             String[] jvmArguments,
             PreparationListener listener
     ) {
+        return startPreparation(
+                activity,
+                directory,
+                version,
+                renderer,
+                memoryMb,
+                gameArguments,
+                jvmArguments,
+                null,
+                listener
+        );
+    }
+
+    /** controlFile은 controlmap 폴더 안의 파일명이며 null이면 사용자 기본 설정을 사용한다. */
+    public static PreparationRequest startPreparation(
+            Activity activity,
+            File directory,
+            String version,
+            String renderer,
+            int memoryMb,
+            String[] gameArguments,
+            String[] jvmArguments,
+            String controlFile,
+            PreparationListener listener
+    ) {
+        if (controlFile != null && (
+                !controlFile.endsWith(".json")
+                        || controlFile.contains("/")
+                        || controlFile.contains("\\")
+                        || controlFile.indexOf('\0') >= 0
+        )) {
+            throw new IllegalArgumentException("Invalid control file name");
+        }
         Handler main = new Handler(Looper.getMainLooper());
         PreparationTask request = new PreparationTask(action -> main.post(action), listener);
         String[] requestedGameArguments = gameArguments == null ? null : gameArguments.clone();
@@ -258,6 +291,7 @@ public final class AmethystRuntime {
             profile.pojavRendererName = renderer;
             profile.extraGameArguments = requestedGameArguments;
             profile.extraJvmArguments = requestedJvmArguments;
+            profile.controlFile = controlFile;
             LauncherProfiles.mainProfileJson.profiles.put(profileId, profile);
             LauncherProfiles.write();
             LauncherPreferences.DEFAULT_PREF
