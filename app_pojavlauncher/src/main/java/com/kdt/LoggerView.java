@@ -103,6 +103,7 @@ public class LoggerView extends ConstraintLayout {
         findViewById(R.id.top_log_view).setBackgroundColor(theme.color(R.color.background_status_bar));
         mScrollView.setBackgroundColor(theme.color(R.color.runtime_surface));
         ImageButton close = findViewById(R.id.log_view_cancel);
+        close.setBackground(theme.drawable(R.drawable.runtime_overlay_button));
         close.setColorFilter(theme.color(R.color.primary_text));
         theme.applyControls(this);
     }

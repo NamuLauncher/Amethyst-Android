@@ -78,10 +78,17 @@ public final class RuntimeTheme {
             TextView label = (TextView) view;
             label.setTextColor(text);
             label.setHintTextColor(hint);
+            if (label.getCompoundDrawableTintList() != null) {
+                label.setCompoundDrawableTintList(text);
+            }
         }
 
         if (view instanceof Switch) {
             Switch toggle = (Switch) view;
+            // 제조사 기본 drawable의 투명도와 관계없이 트랙과 손잡이의 대비를 확보한다.
+            toggle.setThumbDrawable(drawable(R.drawable.runtime_switch_thumb));
+            toggle.setTrackDrawable(drawable(R.drawable.runtime_switch_track));
+            toggle.setSplitTrack(false);
             toggle.setThumbTintList(switchThumb);
             toggle.setTrackTintList(switchTrack);
         } else if (view instanceof ToggleButton) {

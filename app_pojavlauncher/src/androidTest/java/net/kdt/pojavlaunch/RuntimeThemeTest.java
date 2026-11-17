@@ -12,6 +12,9 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
+import android.view.ContextThemeWrapper;
+import android.view.LayoutInflater;
+import android.view.View;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.Switch;
@@ -19,10 +22,13 @@ import android.widget.TextView;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.core.graphics.ColorUtils;
+import androidx.preference.PreferenceViewHolder;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.SdkSuppress;
 import androidx.test.platform.app.InstrumentationRegistry;
 
+import net.kdt.pojavlaunch.lifecycle.LifecycleAwareAlertDialog;
+import net.kdt.pojavlaunch.prefs.CustomSeekBarPreference;
 import net.kdt.pojavlaunch.prefs.LauncherPreferences;
 import net.kdt.pojavlaunch.prefs.QuickSettingSideDialog;
 import net.kdt.pojavlaunch.utils.RuntimeTheme;
@@ -63,6 +69,7 @@ public final class RuntimeThemeTest {
             int lightPanel = panelColor(probe);
             instrumentation.runOnMainSync(() -> {
                 assertTrue(ColorUtils.calculateContrast(lightText, lightPanel) >= 4.5);
+                assertSeekBarTitleContrast(probe);
                 assertEquals(Locale.ENGLISH, probe.getResources().getConfiguration().getLocales().get(0));
                 gestures.setChecked(!originalGestures);
                 assertEquals(!originalGestures, LauncherPreferences.PREF_DISABLE_GESTURES);
@@ -71,6 +78,7 @@ public final class RuntimeThemeTest {
                         .setTitle("Test title")
                         .setView(probe.input)
                         .setPositiveButton(android.R.string.ok, null));
+                probe.showLifecycleWarning();
             });
 
             shell("cmd uimode night yes");
@@ -84,6 +92,8 @@ public final class RuntimeThemeTest {
                 assertTrue(probe.dialog.isShowing());
                 assertEquals("Test value", probe.input.getText().toString());
                 assertEquals(label.getCurrentTextColor(), probe.input.getCurrentTextColor());
+                assertEquals(label.getCurrentTextColor(), probe.warningLabel.getCurrentTextColor());
+                assertSeekBarTitleContrast(probe);
                 assertEquals(Locale.ENGLISH, probe.getResources().getConfiguration().getLocales().get(0));
             });
 
@@ -92,6 +102,7 @@ public final class RuntimeThemeTest {
             instrumentation.runOnMainSync(() -> {
                 assertEquals(lightText, label.getCurrentTextColor());
                 assertEquals(lightPanel, panelColor(probe));
+                assertEquals(lightText, probe.warningLabel.getCurrentTextColor());
                 assertEquals(Locale.ENGLISH, probe.getResources().getConfiguration().getLocales().get(0));
                 probe.dialog.dismiss();
                 probe.settings.cancel();
@@ -120,6 +131,19 @@ public final class RuntimeThemeTest {
         return ((GradientDrawable) activity.panelHost.getChildAt(0).getBackground()).getColor().getDefaultColor();
     }
 
+    private static void assertSeekBarTitleContrast(ProbeActivity activity) {
+        ContextThemeWrapper preferenceContext = new ContextThemeWrapper(activity,
+                R.style.PreferenceThemeOverlay_v14_Material);
+        CustomSeekBarPreference preference = new CustomSeekBarPreference(preferenceContext);
+        preference.setTitle("Test setting");
+        View row = LayoutInflater.from(preferenceContext)
+                .inflate(preference.getLayoutResource(), activity.panelHost, false);
+        preference.onBindViewHolder(PreferenceViewHolder.createInstanceForTests(row));
+        TextView title = row.findViewById(android.R.id.title);
+        assertTrue(ColorUtils.calculateContrast(title.getCurrentTextColor(),
+                activity.getColor(R.color.background_app)) >= 4.5);
+    }
+
     private String shell(String command) throws IOException {
         try (ParcelFileDescriptor.AutoCloseInputStream input = new ParcelFileDescriptor.AutoCloseInputStream(
                 instrumentation.getUiAutomation().executeShellCommand(command))) {
@@ -139,6 +163,18 @@ public final class RuntimeThemeTest {
         private QuickSettingSideDialog settings;
         private AlertDialog dialog;
         private EditText input;
+        private TextView warningLabel;
+
+        private void showLifecycleWarning() {
+            warningLabel = new TextView(this);
+            warningLabel.setText("Test warning");
+            new LifecycleAwareAlertDialog() {
+                @Override
+                protected void dialogHidden(boolean lifecycleEnded) {}
+            }.show(getLifecycle(), this, (dialog, builder) -> builder
+                    .setView(warningLabel)
+                    .setPositiveButton(android.R.string.ok, null));
+        }
 
         @Override
         protected void onCreate(Bundle savedInstanceState) {

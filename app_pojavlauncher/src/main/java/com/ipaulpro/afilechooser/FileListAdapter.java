@@ -114,6 +114,7 @@ public class FileListAdapter extends BaseAdapter {
         // If the item is not a directory, use the file icon
         int icon = file.isDirectory() ? ICON_FOLDER : ICON_FILE;
         view.setCompoundDrawablesWithIntrinsicBounds(icon, 0, 0, 0);
+        view.setCompoundDrawableTintList(view.getTextColors());
         view.setCompoundDrawablePadding(20);
         return row;
     }

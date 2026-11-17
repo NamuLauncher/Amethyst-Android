@@ -5,7 +5,6 @@ import static net.kdt.pojavlaunch.PojavApplication.sExecutorService;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.ColorStateList;
-import android.graphics.Color;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -166,7 +165,7 @@ public class RTRecyclerViewAdapter extends RecyclerView.Adapter<RTRecyclerViewAd
                 mFullJavaVersionTextView.setText(mContext.getString(R.string.multirt_runtime_incompatiblearch, runtime.arch));
             }
             mJavaVersionTextView.setText(runtime.name);
-            mFullJavaVersionTextView.setTextColor(Color.RED);
+            mFullJavaVersionTextView.setTextColor(mFullJavaVersionTextView.getContext().getColor(R.color.runtime_error));
             mSetDefaultButton.setVisibility(View.GONE);
         }
 
