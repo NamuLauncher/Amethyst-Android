@@ -56,7 +56,6 @@
 				android:layout_width="1dp"
 				android:layout_height="1dp"
 				android:layout_gravity="bottom"
-				android:background="@android:color/darker_gray"
 				android:ems="10"
 				android:imeOptions="flagNoFullscreen|flagNoExtractUi|flagNoPersonalizedLearning|actionDone"
 				android:inputType="textFilter|textImeMultiLine|textAutoComplete|textAutoCorrect"
@@ -95,8 +94,9 @@
 		android:layout_width="200dp"
 		android:layout_height="match_parent"
 		android:layout_gravity="right"
-		android:background="?attr/colorBackgroundFloating"
+		android:background="@color/runtime_surface"
 		android:fitsSystemWindows="false"
+		android:listSelector="@drawable/runtime_selection"
 		android:id="@+id/main_navigation_view"/>
 
 </androidx.drawerlayout.widget.DrawerLayout>

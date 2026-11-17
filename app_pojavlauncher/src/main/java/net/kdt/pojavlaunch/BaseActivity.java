@@ -1,24 +1,64 @@
 package net.kdt.pojavlaunch;
 
-import android.content.*;
-import android.os.*;
-import androidx.appcompat.app.*;
-import net.kdt.pojavlaunch.utils.*;
-
 import static net.kdt.pojavlaunch.prefs.LauncherPreferences.PREF_IGNORE_NOTCH;
 
+import android.app.Dialog;
+import android.content.Context;
+import android.content.Intent;
+import android.content.res.Configuration;
+import android.os.Bundle;
+
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+
+import net.kdt.pojavlaunch.utils.LocaleUtils;
+import net.kdt.pojavlaunch.utils.RuntimeTheme;
+
+import java.util.Collections;
+import java.util.Set;
+import java.util.WeakHashMap;
+
 public abstract class BaseActivity extends AppCompatActivity {
+    private final Set<Dialog> runtimeDialogs =
+            Collections.newSetFromMap(new WeakHashMap<>());
+    private int nightMode;
+
+    public final void trackRuntimeDialog(Dialog dialog) {
+        runtimeDialogs.add(dialog);
+        new RuntimeTheme(this).applyDialog(dialog);
+    }
+
+    @Override
+    public void onConfigurationChanged(@NonNull Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        int newNightMode = RuntimeTheme.nightMode(getResources().getConfiguration());
+        if (nightMode == newNightMode) {
+            return;
+        }
+
+        nightMode = newNightMode;
+        RuntimeTheme theme = new RuntimeTheme(this);
+        theme.applySystemBars(getWindow());
+        runtimeDialogs.removeIf(dialog -> !dialog.isShowing());
+        for (Dialog dialog : runtimeDialogs) {
+            theme.applyDialog(dialog);
+        }
+        onRuntimeThemeChanged(theme);
+    }
+
+    protected void onRuntimeThemeChanged(RuntimeTheme theme) {}
 
     @Override
     protected void attachBaseContext(Context newBase) {
-        super.attachBaseContext(LocaleUtils.setLocale(newBase));
+        super.attachBaseContext(LocaleUtils.forActivity(newBase));
     }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        LocaleUtils.setLocale(this);
+        nightMode = RuntimeTheme.nightMode(getResources().getConfiguration());
         Tools.setFullscreen(this, setFullscreen());
+        new RuntimeTheme(this).applySystemBars(getWindow());
         Tools.updateWindowSize(this);
     }
 

@@ -8,7 +8,7 @@
         android:id="@+id/top_log_view"
         android:layout_width="match_parent"
         android:layout_height="70dp"
-        android:background="#555555"
+        android:background="@color/background_status_bar"
         app:layout_constraintTop_toTopOf="parent" />
 
     <TextView
@@ -50,6 +50,7 @@
         android:layout_height="70dp"
         android:scaleType="centerCrop"
         android:src="@android:drawable/ic_delete"
+        android:tint="@color/runtime_text"
         app:layout_constraintBottom_toBottomOf="@+id/top_log_view"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
@@ -58,8 +59,7 @@
         android:id="@+id/content_log_scroll"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:alpha="0.8"
-        android:background="#000000"
+        android:background="@color/runtime_surface"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/top_log_view">
 

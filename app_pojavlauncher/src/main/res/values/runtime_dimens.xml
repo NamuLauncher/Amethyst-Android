@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="runtime_text_size">@dimen/_12ssp</dimen>
+</resources>

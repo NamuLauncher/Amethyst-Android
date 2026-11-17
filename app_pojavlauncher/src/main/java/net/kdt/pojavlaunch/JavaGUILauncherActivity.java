@@ -12,6 +12,7 @@ import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.Toast;
@@ -28,6 +29,7 @@ import net.kdt.pojavlaunch.multirt.Runtime;
 import net.kdt.pojavlaunch.prefs.LauncherPreferences;
 import net.kdt.pojavlaunch.utils.JREUtils;
 import net.kdt.pojavlaunch.utils.MathUtils;
+import net.kdt.pojavlaunch.utils.RuntimeTheme;
 
 import org.apache.commons.io.IOUtils;
 import org.lwjgl.glfw.CallbackBridge;
@@ -56,6 +58,22 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
 
     private boolean mIsVirtualMouseEnabled;
     
+    @Override
+    protected void onRuntimeThemeChanged(RuntimeTheme theme) {
+        if (mLoggerView == null) {
+            return;
+        }
+        mLoggerView.applyRuntimeTheme(theme);
+        ViewGroup overlay = findViewById(R.id.installmod_overlay);
+        for (int i = 0; i < overlay.getChildCount(); i++) {
+            View child = overlay.getChildAt(i);
+            if (child instanceof Button) {
+                child.setBackground(theme.drawable(R.drawable.runtime_overlay_button));
+                theme.applyControls(child);
+            }
+        }
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -253,20 +271,18 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
     }
 
     private void finalErrorDialog(CharSequence msg) {
-        runOnUiThread(()-> new AlertDialog.Builder(this)
+        runOnUiThread(() -> RuntimeTheme.show(new AlertDialog.Builder(this)
                 .setTitle(R.string.global_error)
                 .setMessage(msg)
                 .setPositiveButton(android.R.string.ok, (d,w)->this.finish())
-                .setCancelable(false)
-                .show());
+                .setCancelable(false)));
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        final int uiOptions = View.SYSTEM_UI_FLAG_HIDE_NAVIGATION;
-        final View decorView = getWindow().getDecorView();
-        decorView.setSystemUiVisibility(uiOptions);
+        View decorView = getWindow().getDecorView();
+        decorView.setSystemUiVisibility(decorView.getSystemUiVisibility() | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
     }
 
 

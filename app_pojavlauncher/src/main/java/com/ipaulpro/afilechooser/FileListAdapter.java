@@ -109,6 +109,7 @@ public class FileListAdapter extends BaseAdapter {
 
         // Set the TextView as the file name
         view.setText(file.getName());
+        view.setTextColor(parent.getContext().getColorStateList(R.color.runtime_text));
 
         // If the item is not a directory, use the file icon
         int icon = file.isDirectory() ? ICON_FOLDER : ICON_FILE;

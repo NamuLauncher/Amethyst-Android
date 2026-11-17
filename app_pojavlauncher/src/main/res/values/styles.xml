@@ -1,16 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Light or not? -->
-    <style name="AppTheme" parent="@style/Theme.AppCompat.NoActionBar">
+    <style name="AmethystRuntimeTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowNoTitle">true</item>
         <item name="windowActionBar">false</item>
         <item name="android:windowContentOverlay">@null</item>
         <item name="android:statusBarColor">@color/background_status_bar</item>
         <item name="android:navigationBarColor">@color/background_app</item>
+        <item name="android:windowLightStatusBar">@bool/runtime_light_bars</item>
+        <item name="android:windowLightNavigationBar">@bool/runtime_light_bars</item>
+        <item name="android:textColorPrimary">@color/runtime_text</item>
+        <item name="android:textColorSecondary">@color/runtime_hint</item>
+        <item name="colorAccent">@color/runtime_accent</item>
+        <item name="android:colorAccent">@color/runtime_accent</item>
+        <item name="alertDialogTheme">@style/AmethystRuntimeAlertDialog</item>
         <item name="preferenceTheme">@style/PreferenceThemeOverlay.v14.Material</item>
 
-        <item name="android:textSize">@dimen/_12ssp</item>
+        <item name="android:textSize">@dimen/runtime_text_size</item>
 
+    </style>
+
+    <style name="AmethystRuntimeAlertDialog" parent="ThemeOverlay.AppCompat.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/runtime_dialog_background</item>
     </style>
 
     <style name="LauncherFragment_Divider">

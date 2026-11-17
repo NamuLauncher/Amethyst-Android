@@ -2,8 +2,8 @@ package com.kdt.mcgui;
 
 import android.content.*;
 import android.util.*;
-import android.graphics.*;
-import android.widget.EditText;
+
+import net.kdt.pojavlaunch.R;
 
 public class MineEditText extends androidx.appcompat.widget.AppCompatEditText {
 	public MineEditText(Context ctx) {
@@ -17,7 +17,7 @@ public class MineEditText extends androidx.appcompat.widget.AppCompatEditText {
 	}
 
 	public void init() {
-		setBackgroundColor(Color.parseColor("#131313"));
+		setBackgroundTintList(getContext().getColorStateList(R.color.runtime_control));
 		setPadding(5, 5, 5, 5);
 	}
 }

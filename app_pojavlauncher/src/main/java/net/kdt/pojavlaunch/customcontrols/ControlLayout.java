@@ -25,6 +25,7 @@ import com.kdt.pickafile.FileSelectedListener;
 
 import net.kdt.pojavlaunch.MinecraftGLSurface;
 import net.kdt.pojavlaunch.R;
+import net.kdt.pojavlaunch.utils.RuntimeTheme;
 import net.kdt.pojavlaunch.Tools;
 import net.kdt.pojavlaunch.customcontrols.buttons.ControlButton;
 import net.kdt.pojavlaunch.customcontrols.buttons.ControlDrawer;
@@ -533,7 +534,7 @@ public class ControlLayout extends FrameLayout {
 			if(editorExitable != null) dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
 					.setOnClickListener(new OnClickExitListener(dialog, edit, editorExitable));
 		});
-		dialog.show();
+		RuntimeTheme.show(dialog);
 	}
 
 	public void openLoadDialog() {
@@ -558,7 +559,7 @@ public class ControlLayout extends FrameLayout {
 			}
 		});
 		dialog.setView(flv);
-		dialog.show();
+		RuntimeTheme.show(dialog);
 	}
 
 	public void openSetDefaultDialog() {
@@ -583,7 +584,7 @@ public class ControlLayout extends FrameLayout {
 			}
 		});
 		dialog.setView(flv);
-		dialog.show();
+		RuntimeTheme.show(dialog);
 	}
 
 	public void openExitDialog(EditorExitable exitListener) {
@@ -592,10 +593,15 @@ public class ControlLayout extends FrameLayout {
 		builder.setMessage(R.string.customctrl_editor_exit_msg);
 		builder.setPositiveButton(R.string.global_yes, (d,w)->exitListener.exitEditor());
 		builder.setNegativeButton(R.string.global_no, (d,w)->{});
-		builder.show();
+		RuntimeTheme.show(builder);
 	}
 
 	public boolean areControlVisible(){
 		return mControlVisible;
+	}
+	public void applyRuntimeTheme(RuntimeTheme theme) {
+		if (mControlDialog != null) {
+			mControlDialog.applyRuntimeTheme(theme);
+		}
 	}
 }

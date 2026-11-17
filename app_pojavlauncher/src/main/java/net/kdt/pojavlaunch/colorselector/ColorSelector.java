@@ -10,10 +10,12 @@ import android.view.ViewGroup;
 import android.widget.EditText;
 
 import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
 
 import com.kdt.SideDialogView;
 
 import net.kdt.pojavlaunch.R;
+import net.kdt.pojavlaunch.utils.RuntimeTheme;
 
 public class ColorSelector extends SideDialogView implements HueSelectionListener, RectangleSelectionListener, AlphaSelectionListener, TextWatcher{
     private static final int ALPHA_MASK = ~(0xFF << 24);
@@ -29,6 +31,7 @@ public class ColorSelector extends SideDialogView implements HueSelectionListene
     private int mAlphaSelected = 0xff;
     private ColorStateList mTextColors;
     private boolean mWatch = true;
+    private boolean mInvalidHex;
 
     private boolean mAlphaEnabled = true;
 
@@ -53,6 +56,7 @@ public class ColorSelector extends SideDialogView implements HueSelectionListene
         mAlphaView.setAlphaSelectionListener(this);
         mTextView.addTextChangedListener(this);
         mTextColors = mTextView.getTextColors();
+        mInvalidHex = false;
         mAlphaView.setVisibility(mAlphaEnabled ? View.VISIBLE : View.GONE);
 
         // Set elevation to show above other side dialogs.
@@ -144,13 +148,26 @@ public class ColorSelector extends SideDialogView implements HueSelectionListene
         if(mWatch) {
             try {
                 int color = Integer.parseInt(s.toString(), 16);
+                mInvalidHex = false;
                 mTextView.setTextColor(mTextColors);
                 runColor(color);
             }catch (NumberFormatException exception) {
-                mTextView.setTextColor(Color.RED);
+                mInvalidHex = true;
+                mTextView.setTextColor(ContextCompat.getColor(mTextView.getContext(), R.color.runtime_error));
             }
         }else{
             mWatch = true;
+            mInvalidHex = false;
+            mTextView.setTextColor(mTextColors);
+        }
+    }
+
+    @Override
+    protected void onRuntimeThemeChanged(RuntimeTheme theme) {
+        mDialogContent.setBackground(theme.drawable(R.drawable.background_control_editor));
+        mTextColors = mTextView.getTextColors();
+        if (mInvalidHex) {
+            mTextView.setTextColor(theme.color(R.color.runtime_error));
         }
     }
 

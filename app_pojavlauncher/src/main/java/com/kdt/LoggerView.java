@@ -14,6 +14,7 @@ import androidx.constraintlayout.widget.ConstraintLayout;
 
 import net.kdt.pojavlaunch.Logger;
 import net.kdt.pojavlaunch.R;
+import net.kdt.pojavlaunch.utils.RuntimeTheme;
 
 /**
  * A class able to display logs to the user.
@@ -33,6 +34,7 @@ public class LoggerView extends ConstraintLayout {
     public LoggerView(@NonNull Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
         init();
+        applyRuntimeTheme(new RuntimeTheme(context));
     }
 
     @Override
@@ -97,4 +99,11 @@ public class LoggerView extends ConstraintLayout {
         };
     }
 
+    public void applyRuntimeTheme(RuntimeTheme theme) {
+        findViewById(R.id.top_log_view).setBackgroundColor(theme.color(R.color.background_status_bar));
+        mScrollView.setBackgroundColor(theme.color(R.color.runtime_surface));
+        ImageButton close = findViewById(R.id.log_view_cancel);
+        close.setColorFilter(theme.color(R.color.primary_text));
+        theme.applyControls(this);
+    }
 }

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="background_app">#181818</color>
+    <color name="background_overlay">#464646</color>
+    <color name="background_status_bar">#242424</color>
+    <color name="background_bottom_bar">#232323</color>
+    <color name="primary_text">#FFFFFF</color>
+    <color name="secondary_text">#BDBDC7</color>
+    <color name="runtime_surface">#29292F</color>
+    <color name="runtime_disabled_text">#AAAAB5</color>
+    <color name="runtime_control_outline">#A2A2B0</color>
+    <color name="runtime_accent">#D6B6FF</color>
+    <color name="runtime_on_accent">#222228</color>
+    <color name="runtime_error">#FF9B9F</color>
+    <color name="runtime_selected">#4B3765</color>
+    <color name="runtime_ripple">#33D6B6FF</color>
+    <color name="runtime_progress_fill">#70558F</color>
+    <bool name="runtime_light_bars">false</bool>
+</resources>

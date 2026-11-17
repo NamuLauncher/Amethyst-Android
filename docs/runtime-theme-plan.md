@@ -1,6 +1,17 @@
 # 런타임 라이트·다크 테마 적용 계획
 
-[Amethyst #14](https://github.com/NamuLauncher/Amethyst-Android/issues/14)는 빠른 설정을 포함한 런타임 UI가 기기 테마에 따라 배경과 전경을 함께 바꾸도록 요청한다. 호스트의 Compose UI 변경과 통합 검증은 [namu-android #39](https://github.com/NamuLauncher/namu-android/issues/39)에서 추적한다. 현재 상태는 이슈와 코드 조사에 기반한 계획이다. 제보 기기의 테마 상태와 실제 재현 조건은 미확인이다.
+[Amethyst #14](https://github.com/NamuLauncher/Amethyst-Android/issues/14)는 빠른 설정을 포함한 런타임 UI가 기기 테마에 따라 배경과 전경을 함께 바꾸도록 요청한다. 호스트의 Compose UI 변경과 통합 검증은 [namu-android #39](https://github.com/NamuLauncher/namu-android/issues/39)에서 추적한다. 제보 기기의 테마 상태와 실제 재현 조건은 미확인이다.
+
+## 구현 결과
+
+- 게임·설치·컨트롤 편집·계정 Activity에 런타임 DayNight 테마를 명시했다. `values`와 `values-night`에서 표면, 글자, 비활성, 선택, 오류 색상을 함께 정의한다. 앱의 콘텐츠 색상은 Android의 [다크 테마 지침](https://developer.android.com/develop/ui/views/theming/darktheme)을 따라 상태 목록과 리소스로 적용한다.
+- 게임·설치·컨트롤 편집 화면은 `uiMode` 변경을 직접 처리한다. 빠른 설정, 편집 패널, 로그, 메뉴, 열린 런타임 대화상자의 색상을 기존 뷰에 다시 적용하므로 입력, 임시 설정값과 게임 렌더링 뷰가 유지된다. 새로 그리는 메뉴 행은 현재 팔레트를 적용한다. 강제 영어 설정의 Activity 구성은 언어만 덮어쓴다.
+- 컨트롤 편집기의 미저장 변경, 설치 진행 대화상자, 재사용되는 메뉴 행의 색상이 유지되는 경로를 독립 리뷰에서 보완했다. 실기기와 호스트에서 실제 게임을 기동해 렌더링까지 확인하는 검증은 남아 있다.
+
+## 구현 검증
+
+- `:app_pojavlauncher:assembleDebug`와 `:app_pojavlauncher:assembleDebugAndroidTest`가 통과했다. API 35 에뮬레이터에서 `RuntimeThemeTest`와 `ApplicationContextTest`의 계측 3개가 통과했다. 시스템 설정을 바꿔 라이트 → 다크 → 라이트 전환을 확인했으며, 같은 빠른 설정 뷰와 열린 대화상자가 색상을 갱신하고 입력값과 취소 전 임시 설정값을 보존했다. 강제 영어 설정에서도 전환이 적용됐다.
+- namu-android #39 작업본의 임시 복사본을 런타임과 함께 빌드해 `:app:processDebugResources`를 통과했다. 호스트 병합 manifest에서 게임·설치·편집·계정 Activity의 런타임 테마와 `:game` 프로세스 선언을 확인했다.
 
 ## 코드에서 확인한 내용
 
