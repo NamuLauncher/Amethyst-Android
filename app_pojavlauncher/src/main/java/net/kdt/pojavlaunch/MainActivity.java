@@ -13,7 +13,6 @@ import static org.lwjgl.glfw.CallbackBridge.windowHeight;
 import static org.lwjgl.glfw.CallbackBridge.windowWidth;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ComponentName;
@@ -44,6 +43,7 @@ import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
+import androidx.appcompat.app.AlertDialog;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -60,6 +60,7 @@ import net.kdt.pojavlaunch.customcontrols.ControlJoystickData;
 import net.kdt.pojavlaunch.customcontrols.ControlLayout;
 import net.kdt.pojavlaunch.customcontrols.CustomControls;
 import net.kdt.pojavlaunch.customcontrols.EditorExitable;
+import net.kdt.pojavlaunch.customcontrols.handleview.DrawerPullButton;
 import net.kdt.pojavlaunch.customcontrols.keyboard.LwjglCharSender;
 import net.kdt.pojavlaunch.customcontrols.keyboard.TouchCharInput;
 import net.kdt.pojavlaunch.customcontrols.mouse.GyroControl;
@@ -72,6 +73,8 @@ import net.kdt.pojavlaunch.runtime.RuntimeGameSession;
 import net.kdt.pojavlaunch.services.GameService;
 import net.kdt.pojavlaunch.utils.JREUtils;
 import net.kdt.pojavlaunch.utils.MCOptionUtils;
+import net.kdt.pojavlaunch.utils.RuntimeTextAdapter;
+import net.kdt.pojavlaunch.utils.RuntimeTheme;
 import net.kdt.pojavlaunch.utils.TouchControllerInputView;
 import net.kdt.pojavlaunch.utils.TouchControllerUtils;
 import net.kdt.pojavlaunch.value.MinecraftAccount;
@@ -101,7 +104,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     private LoggerView loggerView;
     private DrawerLayout drawerLayout;
     private ListView navDrawer;
-    private View mDrawerPullButton;
+    private DrawerPullButton mDrawerPullButton;
     private GyroControl mGyroControl = null;
     private ControlLayout mControlLayout;
     private HotbarView mHotbarView;
@@ -167,8 +170,8 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N)
             getWindow().setSustainedPerformanceMode(PREF_SUSTAINED_PERFORMANCE);
 
-        ingameControlsEditorArrayAdapter = new ArrayAdapter<>(this,
-                android.R.layout.simple_list_item_1, getResources().getStringArray(R.array.menu_customcontrol));
+        ingameControlsEditorArrayAdapter = new RuntimeTextAdapter<>(this,
+                R.layout.item_runtime_menu, getResources().getStringArray(R.array.menu_customcontrol));
         ingameControlsEditorListener = (parent, view, position, id) -> {
             switch(position) {
                 case 0: mControlLayout.addControlButton(new ControlData("New")); break;
@@ -268,8 +271,8 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
 
 
             // Menu
-            gameActionArrayAdapter = new ArrayAdapter<>(this,
-                    android.R.layout.simple_list_item_1, getResources().getStringArray(R.array.menu_ingame));
+            gameActionArrayAdapter = new RuntimeTextAdapter<>(this,
+                    R.layout.item_runtime_menu, getResources().getStringArray(R.array.menu_ingame));
             gameActionClickListener = (parent, view, position, id) -> {
                 switch(position) {
                     case 0: dialogForceClose(MainActivity.this); break;
@@ -404,8 +407,26 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     }
 
     @Override
+    protected void onRuntimeThemeChanged(RuntimeTheme theme) {
+        if (mControlLayout == null) {
+            return;
+        }
+
+        mControlLayout.applyRuntimeTheme(theme);
+        if (mQuickSettingSideDialog != null) {
+            mQuickSettingSideDialog.applyRuntimeTheme(theme);
+        }
+        mDrawerPullButton.applyRuntimeTheme(theme);
+        loggerView.applyRuntimeTheme(theme);
+        theme.applyMenu(navDrawer);
+    }
+
+    @Override
     public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        if (mControlLayout == null) {
+            return;
+        }
         if(mGyroControl != null) mGyroControl.updateOrientation();
         // Layout resize is practically guaranteed on a configuration change, and `onConfigurationChanged`
         // does not implicitly start a layout. So, request a layout and expect the screen dimensions to be valid after the]
@@ -524,8 +545,10 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     private void dialogSendCustomKey() {
         AlertDialog.Builder dialog = new AlertDialog.Builder(this);
         dialog.setTitle(R.string.control_customkey);
-        dialog.setItems(EfficientAndroidLWJGLKeycode.generateKeyName(), (dInterface, position) -> EfficientAndroidLWJGLKeycode.execKeyIndex(position));
-        dialog.show();
+        dialog.setAdapter(new RuntimeTextAdapter<>(this, R.layout.item_runtime_menu,
+                EfficientAndroidLWJGLKeycode.generateKeyName()),
+                (dialogInterface, position) -> EfficientAndroidLWJGLKeycode.execKeyIndex(position));
+        RuntimeTheme.show(dialog);
     }
 
     boolean isInEditor;

@@ -2,7 +2,6 @@ package net.kdt.pojavlaunch.fragments;
 
 import android.content.Context;
 import android.content.res.ColorStateList;
-import android.graphics.Color;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
@@ -122,7 +121,7 @@ public class SearchModFragment extends Fragment implements ModItemAdapter.Search
         mStatusTextView.setVisibility(View.VISIBLE);
         switch (error) {
             case ERROR_INTERNAL:
-                mStatusTextView.setTextColor(Color.RED);
+                mStatusTextView.setTextColor(mStatusTextView.getContext().getColor(R.color.runtime_error));
                 mStatusTextView.setText(R.string.search_modpack_error);
                 break;
             case ERROR_NO_RESULTS:

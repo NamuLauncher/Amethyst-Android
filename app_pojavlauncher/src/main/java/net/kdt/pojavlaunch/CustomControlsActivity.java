@@ -4,8 +4,6 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.DocumentsContract;
-import android.view.View;
-import android.widget.ArrayAdapter;
 import android.widget.ListView;
 
 import androidx.drawerlayout.widget.DrawerLayout;
@@ -15,7 +13,10 @@ import net.kdt.pojavlaunch.customcontrols.ControlDrawerData;
 import net.kdt.pojavlaunch.customcontrols.ControlJoystickData;
 import net.kdt.pojavlaunch.customcontrols.ControlLayout;
 import net.kdt.pojavlaunch.customcontrols.EditorExitable;
+import net.kdt.pojavlaunch.customcontrols.handleview.DrawerPullButton;
 import net.kdt.pojavlaunch.prefs.LauncherPreferences;
+import net.kdt.pojavlaunch.utils.RuntimeTextAdapter;
+import net.kdt.pojavlaunch.utils.RuntimeTheme;
 
 import java.io.IOException;
 
@@ -24,6 +25,7 @@ public class CustomControlsActivity extends BaseActivity implements EditorExitab
 	private DrawerLayout mDrawerLayout;
 	private ListView mDrawerNavigationView;
 	private ControlLayout mControlLayout;
+	private DrawerPullButton mPullDrawerButton;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -34,12 +36,12 @@ public class CustomControlsActivity extends BaseActivity implements EditorExitab
 		mControlLayout = findViewById(R.id.customctrl_controllayout);
 		mDrawerLayout = findViewById(R.id.customctrl_drawerlayout);
 		mDrawerNavigationView = findViewById(R.id.customctrl_navigation_view);
-		View mPullDrawerButton = findViewById(R.id.drawer_button);
+		mPullDrawerButton = findViewById(R.id.drawer_button);
 
 		mPullDrawerButton.setOnClickListener(v -> mDrawerLayout.openDrawer(mDrawerNavigationView));
 		mDrawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
 
-		mDrawerNavigationView.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_list_item_1,getResources().getStringArray(R.array.menu_customcontrol_customactivity)));
+		mDrawerNavigationView.setAdapter(new RuntimeTextAdapter<>(this, R.layout.item_runtime_menu, getResources().getStringArray(R.array.menu_customcontrol_customactivity)));
 		mDrawerNavigationView.setOnItemClickListener((parent, view, position, id) -> {
 			switch(position) {
 				case 0: mControlLayout.addControlButton(new ControlData("New")); break;
@@ -74,6 +76,13 @@ public class CustomControlsActivity extends BaseActivity implements EditorExitab
 		}catch (IOException e) {
 			Tools.showError(this, e);
 		}
+	}
+
+	@Override
+	protected void onRuntimeThemeChanged(RuntimeTheme theme) {
+		mControlLayout.applyRuntimeTheme(theme);
+		mPullDrawerButton.applyRuntimeTheme(theme);
+		theme.applyMenu(mDrawerNavigationView);
 	}
 
 	@Override

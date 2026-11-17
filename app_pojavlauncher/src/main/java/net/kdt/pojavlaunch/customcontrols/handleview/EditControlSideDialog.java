@@ -23,6 +23,8 @@ import com.kdt.SideDialogView;
 
 import net.kdt.pojavlaunch.EfficientAndroidLWJGLKeycode;
 import net.kdt.pojavlaunch.R;
+import net.kdt.pojavlaunch.utils.RuntimeTextAdapter;
+import net.kdt.pojavlaunch.utils.RuntimeTheme;
 import net.kdt.pojavlaunch.Tools;
 import net.kdt.pojavlaunch.colorselector.ColorSelector;
 import net.kdt.pojavlaunch.customcontrols.ControlData;
@@ -262,7 +264,7 @@ public class EditControlSideDialog extends SideDialogView {
 
     private void loadAdapter() {
         //Initialize adapter for keycodes
-        mAdapter = new ArrayAdapter<>(mDialogContent.getContext(), R.layout.item_centered_textview);
+        mAdapter = new RuntimeTextAdapter<>(mDialogContent.getContext(), R.layout.item_centered_textview);
         mSpecialArray = ControlData.buildSpecialButtonArray();
 
         mAdapter.addAll(mSpecialArray);
@@ -274,7 +276,7 @@ public class EditControlSideDialog extends SideDialogView {
         }
 
         // Orientation spinner
-        ArrayAdapter<ControlDrawerData.Orientation> adapter = new ArrayAdapter<>(mDialogContent.getContext(), android.R.layout.simple_spinner_item);
+        ArrayAdapter<ControlDrawerData.Orientation> adapter = new RuntimeTextAdapter<>(mDialogContent.getContext(), android.R.layout.simple_spinner_item);
         adapter.addAll(ControlDrawerData.getOrientations());
         adapter.setDropDownViewResource(android.R.layout.simple_list_item_single_choice);
 
@@ -492,4 +494,10 @@ public class EditControlSideDialog extends SideDialogView {
         mCurrentlyEditedButton.getControlView().addOnLayoutChangeListener(mLayoutChangedListener);
     }
 
+    @Override
+    protected void onRuntimeThemeChanged(RuntimeTheme theme) {
+        mColorSelector.applyRuntimeTheme(theme);
+        mAdapter.notifyDataSetChanged();
+        ((ArrayAdapter<?>) mOrientationSpinner.getAdapter()).notifyDataSetChanged();
+    }
 }

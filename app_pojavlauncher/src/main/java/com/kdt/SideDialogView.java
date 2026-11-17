@@ -19,10 +19,10 @@ import androidx.annotation.LayoutRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
-import androidx.core.content.res.ResourcesCompat;
 
 import net.kdt.pojavlaunch.R;
 import net.kdt.pojavlaunch.Tools;
+import net.kdt.pojavlaunch.utils.RuntimeTheme;
 
 /**
  * The base class for side dialog views
@@ -113,7 +113,6 @@ public abstract class SideDialogView {
         mDialogLayout.setTranslationZ(10);
 
         mDialogLayout.setVisibility(View.VISIBLE);
-        mDialogLayout.setBackground(ResourcesCompat.getDrawable(mDialogLayout.getResources(), R.drawable.background_control_editor, null));
 
         //TODO offset better according to view width
         mDialogLayout.setX(-mDialogLayout.getResources().getDimensionPixelOffset(R.dimen._280sdp));
@@ -157,6 +156,7 @@ public abstract class SideDialogView {
         if (!mIsInstantiated) {
             inflateLayout();
             onInflate();
+            applyRuntimeTheme(new RuntimeTheme(mParent.getContext()));
         }
 
         // To avoid UI sizing issue when the dialog is not fully inflated
@@ -222,6 +222,18 @@ public abstract class SideDialogView {
 
         mSideDialogAnimator.start();
     }
+
+    public final void applyRuntimeTheme(RuntimeTheme theme) {
+        if (!mIsInstantiated) {
+            return;
+        }
+        mDialogLayout.setBackground(theme.drawable(R.drawable.background_control_editor));
+        mTitleDivider.setBackgroundColor(theme.color(R.color.divider));
+        theme.applyControls(mDialogLayout);
+        onRuntimeThemeChanged(theme);
+    }
+
+    protected void onRuntimeThemeChanged(RuntimeTheme theme) {}
 
     /** @return Whether the dialog is currently displaying */
     public final boolean isDisplaying(){

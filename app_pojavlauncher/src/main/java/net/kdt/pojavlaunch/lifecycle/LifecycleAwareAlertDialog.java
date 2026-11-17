@@ -10,6 +10,7 @@ import androidx.lifecycle.LifecycleEventObserver;
 import androidx.lifecycle.LifecycleOwner;
 
 import net.kdt.pojavlaunch.Tools;
+import net.kdt.pojavlaunch.utils.RuntimeTheme;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -43,7 +44,7 @@ public abstract class LifecycleAwareAlertDialog implements LifecycleEventObserve
         builder.setOnDismissListener(wrapDismissListener(null));
         dialogCreator.createDialog(this, builder);
         mLifecycle.addObserver(this);
-        mDialog = builder.show();
+        mDialog = RuntimeTheme.show(builder);
     }
 
     /**

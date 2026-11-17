@@ -2,7 +2,6 @@ package net.kdt.pojavlaunch.customcontrols.handleview;
 
 import android.content.Context;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.Paint;
 import android.util.AttributeSet;
 import android.view.View;
@@ -11,6 +10,7 @@ import androidx.annotation.Nullable;
 import androidx.vectordrawable.graphics.drawable.VectorDrawableCompat;
 
 import net.kdt.pojavlaunch.R;
+import net.kdt.pojavlaunch.utils.RuntimeTheme;
 
 public class DrawerPullButton extends View {
     public DrawerPullButton(Context context) {super(context); init();}
@@ -21,8 +21,13 @@ public class DrawerPullButton extends View {
 
     private void init(){
         mDrawable = VectorDrawableCompat.create(getContext().getResources(), R.drawable.ic_sharp_settings_24, null);
-        setAlpha(0.33f);
-        mBackgroundPaint.setColor(Color.BLACK);
+        applyRuntimeTheme(new RuntimeTheme(getContext()));
+    }
+
+    public void applyRuntimeTheme(RuntimeTheme theme) {
+        mBackgroundPaint.setColor(theme.color(R.color.runtime_surface));
+        mDrawable.setTint(theme.color(R.color.primary_text));
+        invalidate();
     }
 
     @Override

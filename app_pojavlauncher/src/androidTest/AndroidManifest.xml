@@ -6,6 +6,11 @@
         android:name="net.kdt.pojavlaunch.RuntimeTestApplication"
         tools:replace="android:name"
         tools:remove="android:process">
+        <activity
+            android:name="net.kdt.pojavlaunch.RuntimeThemeTest$ProbeActivity"
+            android:configChanges="uiMode"
+            android:exported="false"
+            android:theme="@style/AmethystRuntimeTheme" />
         <receiver
             android:name="net.kdt.pojavlaunch.ApplicationContextProbeReceiver"
             android:exported="false" />
