@@ -133,6 +133,7 @@ public class LauncherActivity extends BaseActivity {
     private ProgressServiceKeeper mProgressServiceKeeper;
     private ModloaderInstallTracker mInstallTracker;
     private NotificationManager mNotificationManager;
+    private boolean mAuthMethodSelectionPending;
 
     /* Allows to switch from one button "type" to another */
     private final FragmentManager.FragmentLifecycleCallbacks mFragmentCallbackListener = new FragmentManager.FragmentLifecycleCallbacks() {
@@ -152,12 +153,30 @@ public class LauncherActivity extends BaseActivity {
     /* Listener for the auth method selection screen */
     private final ExtraListener<Boolean> mSelectAuthMethod = (key, value) -> {
         Fragment fragment = getSupportFragmentManager().findFragmentById(mFragmentView.getId());
-        // Allow starting the add account only from the main menu, should it be moved to fragment itself ?
-        if(!(fragment instanceof MainMenuFragment)) return false;
+        if (fragment instanceof MainMenuFragment) {
+            mAuthMethodSelectionPending = true;
+            showPendingAuthMethodSelection();
+        }
 
-        Tools.swapFragment(this, SelectAuthFragment.class, SelectAuthFragment.TAG, null);
         return false;
     };
+
+    private void showPendingAuthMethodSelection() {
+        FragmentManager fragmentManager = getSupportFragmentManager();
+        if (!mAuthMethodSelectionPending || fragmentManager.isStateSaved() || isFinishing()) {
+            return;
+        }
+
+        mAuthMethodSelectionPending = false;
+        if (fragmentManager.findFragmentById(mFragmentView.getId()) instanceof MainMenuFragment) {
+            Tools.swapFragment(
+                    this,
+                    SelectAuthFragment.class,
+                    SelectAuthFragment.TAG,
+                    null
+            );
+        }
+    }
 
     /* Listener for the settings fragment */
     private final View.OnClickListener mSettingButtonListener = v -> {
@@ -354,6 +373,13 @@ public class LauncherActivity extends BaseActivity {
         super.onResume();
         ContextExecutor.setActivity(this);
         mInstallTracker.attach();
+    }
+
+    @Override
+    protected void onResumeFragments() {
+        super.onResumeFragments();
+        // FragmentManager가 저장 상태를 해제하고 화면을 재개한 뒤에 전환을 처리한다.
+        showPendingAuthMethodSelection();
     }
 
     @Override

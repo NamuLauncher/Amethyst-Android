@@ -70,6 +70,10 @@ Android 계측은 같은 Application 연결 경로를 사용하는 테스트 앱
 
 이 API는 파일 IO를 수행하므로 호스트가 작업 스레드에서 호출하고, 준비·인증·게임 실행 중 계정 변경을 UI 작업 가드로 막는다. 런타임에 세션 lease나 호스트 서비스 정책을 추가하지 않는다. 기존 로그인·Device Code API는 유지한다. OAuth 결과·silent refresh는 아래 계약으로 제공하며 호스트 계정 화면은 별도로 연결한다. JVM 파일 계약과 Android의 공개 API·실제 preference 연결을 검증하며 실제 Microsoft 로그인 성공을 대신하지 않는다.
 
+### 런처 계정 추가 화면 전환
+
+메인 메뉴에서 계정 추가를 요청했을 때 FragmentManager가 이미 화면 상태를 저장했다면 즉시 전환할 수 없다. 요청을 현재 Activity에 보류하고 Fragment가 재개된 뒤 메인 메뉴가 그대로 열려 있을 때 한 번만 전환한다. Activity가 종료되면 새 화면으로 요청을 이어 보내지 않는다. 계정 추가 요청 자체에 대한 처리이며 호스트의 OAuth API는 기존과 동일하다.
+
 ## 준비 처리량과 파일 수신량
 
 `GamePreparationProgress.completed/total`은 기존 단계별 처리량이다. `GAME_FILES`에서는 캐시 파일 검사도 포함하며 네트워크 전송량으로 해석하지 않는다. `ITEMS`와 `BYTES` 단위도 유지한다. 새 optional `receivedBytes`는 그 준비 요청의 게임 파일 다운로드에서 실제 읽은 HTTP 응답 본문 바이트 누적값이다. 기존 4/5인자 생성자는 null을 유지하며 미측정 단계를 0바이트 다운로드로 표현하지 않는다. 새 6인자 생성자는 마지막 인자로 nullable 수신량을 받는다.
