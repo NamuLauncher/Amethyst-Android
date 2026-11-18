@@ -45,17 +45,22 @@ public class AsyncVersionList {
 
     private JMinecraftVersionList loadVersionList(boolean secondPass) throws IOException {
         File versionFile = new File(Tools.DIR_CACHE, "version_list.json");
-        Exception lastFailure = null;
+        return loadVersionList(versionFile, LauncherPreferences.PREF_VERSION_REPOS, secondPass);
+    }
+
+    JMinecraftVersionList loadVersionList(File versionFile, String mirror, boolean secondPass) throws IOException {
+        Exception downloadFailure = null;
+        Exception cacheFailure = null;
         int attempts = secondPass ? 1 : 2;
         for (int attempt = 0; attempt < attempts; attempt++) {
             DownloadUtils.throwIfInterrupted();
             boolean stale = System.currentTimeMillis() > versionFile.lastModified() + 86400000;
             if (!versionFile.isFile() || stale || attempt > 0) {
                 try {
-                    return downloadVersionList(LauncherPreferences.PREF_VERSION_REPOS);
+                    return downloadVersionList(mirror, versionFile);
                 } catch (IOException | JsonParseException failure) {
                     DownloadUtils.throwIfInterrupted();
-                    lastFailure = failure;
+                    downloadFailure = failure;
                 }
             }
 
@@ -66,25 +71,33 @@ public class AsyncVersionList {
                 return cached;
             } catch (IOException | JsonParseException failure) {
                 DownloadUtils.throwIfInterrupted();
-                lastFailure = failure;
+                cacheFailure = failure;
             }
         }
-        throw new IOException("Cannot load Minecraft versions", lastFailure);
+
+        // 캐시 읽기 실패가 다운로드 실패 원인을 가리지 않도록 보조 예외로 남긴다.
+        Exception cause = downloadFailure != null ? downloadFailure : cacheFailure;
+        IOException failure = new IOException("Cannot load Minecraft versions", cause);
+        if (downloadFailure != null && cacheFailure != null) {
+            failure.addSuppressed(cacheFailure);
+        }
+        throw failure;
     }
 
-    private JMinecraftVersionList downloadVersionList(String mirror) throws IOException {
+    private JMinecraftVersionList downloadVersionList(String mirror, File versionFile) throws IOException {
         String json = DownloadUtils.downloadString(mirror);
         JMinecraftVersionList versions = Tools.GLOBAL_GSON.fromJson(json, JMinecraftVersionList.class);
         requireVersions(versions);
         DownloadUtils.throwIfInterrupted();
-        FileUtils.ensureDirectory(Tools.DIR_CACHE);
-        Path temporary = Files.createTempFile(Tools.DIR_CACHE.toPath(), "version-list-", ".part");
+        FileUtils.ensureParentDirectory(versionFile);
+        Path target = versionFile.toPath();
+        Path temporary = Files.createTempFile(target.getParent(), "version-list-", ".part");
         try {
             Files.write(temporary, json.getBytes(StandardCharsets.UTF_8));
             DownloadUtils.throwIfInterrupted();
             Files.move(
                     temporary,
-                    new File(Tools.DIR_CACHE, "version_list.json").toPath(),
+                    target,
                     StandardCopyOption.REPLACE_EXISTING
             );
         } finally {
