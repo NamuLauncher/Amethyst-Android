@@ -20,6 +20,7 @@ import net.kdt.pojavlaunch.NewJREUtil;
 import net.kdt.pojavlaunch.R;
 import net.kdt.pojavlaunch.Tools;
 import net.kdt.pojavlaunch.runtime.GamePreparationProgress;
+import net.kdt.pojavlaunch.runtime.NetworkUnavailableException;
 import net.kdt.pojavlaunch.mirrors.DownloadMirror;
 import net.kdt.pojavlaunch.mirrors.MirrorTamperedException;
 import net.kdt.pojavlaunch.prefs.LauncherPreferences;
@@ -150,7 +151,7 @@ public class MinecraftDownloader {
         Tools.switchDemo(Tools.isDemoProfile(activity));
         try {
             if (!Tools.isOnline(activity)) {
-                throw new IOException("No network connection");
+                throw new NetworkUnavailableException();
             }
             downloadGame(activity, null, version);
             DownloadUtils.throwIfInterrupted();
