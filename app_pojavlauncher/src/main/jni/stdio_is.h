@@ -13,7 +13,8 @@ _Noreturn void nominal_exit(int code, bool is_signal);
 // 로그 스레드가 read() 한 번으로 읽은 원본 바이트를 받는 처리 함수. data는 NUL로 끝나지 않는다.
 typedef void (*amethyst_output_handler)(const char* data, size_t length);
 
-// 아래 함수는 AuthYou C가 libpojavexec.so에서 dlsym()으로 찾는 공개 함수다.
+// 아래 함수는 AuthYou Go(libauthyou.so)가 libpojavexec.so를 링크해 호출하는 공개 함수다.
+// 선언을 바꾸면 AuthYou2Server의 client-android/include/authyou_bridge.h도 함께 바꾼다.
 
 // stdout·stderr를 파이프로 연결하고 로그 스레드를 시작한다. 한 실행 경로에서 한 번만 성공한다.
 // 성공하면 0, 실패하면 errno 값을 반환한다.
