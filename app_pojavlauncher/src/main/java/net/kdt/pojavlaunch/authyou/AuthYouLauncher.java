@@ -68,15 +68,13 @@ public final class AuthYouLauncher {
         Logger.addLogListener(logFileListener);
     }
 
-    /** 크래시 보고서 파일을 열 수 없을 때도 남도록 Android 로그와 앱 로그에 함께 기록한다. */
+    /** 게임 시작 중 실패는 logcat에만 남긴다. latest.log에는 실행 중 로그만 기록한다. */
     public static void logStartFailure(String message, Throwable failure) {
         Log.e(TAG, message, failure);
-        Logger.appendToLog("[AuthYou] " + message + ": " + failure);
     }
 
     public static void logStartFailure(String message) {
         Log.e(TAG, message);
-        Logger.appendToLog("[AuthYou] " + message);
     }
 
     private static native int nativeLaunchGame(

@@ -459,8 +459,8 @@ public class JREUtils {
             List<String> jvmArguments,
             AuthYouLaunchRequest request
     ) {
-        // AuthYou Go는 자체 로그를 onEventLogged로만 전달하므로 리스너가 없으면 시작을 중단한다.
-        // 시작 실패 기록도 남도록 작업 디렉터리 확인 전에 latest.log 리스너를 등록한다.
+        // AuthYou Go는 실행 중 로그를 onEventLogged로만 전달하므로 리스너가 없으면 시작을 중단한다.
+        // 시작 중 실패는 각 주체가 logcat에만 남긴다.
         AuthYouLauncher.startLogFile(RuntimeGameSession.authYouLogFile(new File(Tools.DIR_GAME_HOME)));
 
         if (changedDirectory == -1) {
