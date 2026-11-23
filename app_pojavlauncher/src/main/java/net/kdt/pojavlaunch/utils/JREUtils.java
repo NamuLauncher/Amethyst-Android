@@ -459,7 +459,7 @@ public class JREUtils {
             List<String> jvmArguments,
             AuthYouLaunchRequest request
     ) {
-        // AuthYou Go는 실행 중 로그를 onEventLogged로만 전달하므로 리스너가 없으면 시작을 중단한다.
+        // AuthYou Go의 실행 중 로그와 게임 출력은 onEventLogged로만 전달되므로 latest.log 리스너를 먼저 등록한다.
         // 시작 중 실패는 각 주체가 logcat에만 남긴다.
         AuthYouLauncher.startLogFile(RuntimeGameSession.authYouLogFile(new File(Tools.DIR_GAME_HOME)));
 

@@ -206,32 +206,6 @@ void amethyst_flush_output_for_exit(void) {
     sleep(1);
 }
 
-bool amethyst_log_has_listener(void) {
-    return logListener != NULL;
-}
-
-bool amethyst_log_passes_filter(const char* data, size_t length) {
-    char stack_buffer[LOG_READ_BUFFER_SIZE];
-    char* buf = stack_buffer;
-    if(length >= sizeof(stack_buffer)) {
-        buf = malloc(length + 1);
-        if(buf == NULL) {
-            return false;
-        }
-    }
-
-    if(length > 0) {
-        memcpy(buf, data, length);
-    }
-    buf[length] = 0x00;
-    bool passes = passes_log_filter(buf);
-
-    if(buf != stack_buffer) {
-        free(buf);
-    }
-    return passes;
-}
-
 void amethyst_log_event(const char* text, size_t length) {
     if(logListener == NULL) {
         return;
@@ -257,7 +231,10 @@ void amethyst_log_event(const char* text, size_t length) {
             memcpy(buf, text, length);
         }
         buf[length] = 0x00;
-        call_log_listener(env, buf);
+        // AuthYou Go가 넘기는 게임 출력에도 기존 Amethyst 로그 필터를 적용한다.
+        if(passes_log_filter(buf)) {
+            call_log_listener(env, buf);
+        }
         free(buf);
     }
 

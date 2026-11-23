@@ -23,10 +23,8 @@ int amethyst_begin_output(amethyst_output_handler handler);
 // C 표준 입출력 버퍼를 비우고 FD 1·2를 복구한 뒤 로그 스레드가 남은 출력을 넘기고 끝날 때까지 기다린다.
 void amethyst_end_logging(void);
 
-bool amethyst_log_has_listener(void);
-bool amethyst_log_passes_filter(const char* data, size_t length);
-
-// 등록된 리스너의 onEventLogged(text)를 호출한다. ART에 등록되지 않은 스레드에서도 호출할 수 있다.
+// 기존 Amethyst 로그 필터를 통과하면 등록된 리스너의 onEventLogged(text)를 호출한다.
+// 리스너가 없으면 아무것도 하지 않는다. ART에 등록되지 않은 스레드에서도 호출할 수 있다.
 void amethyst_log_event(const char* text, size_t length);
 
 // exit() 처리 중 로그 파이프가 열려 있으면 출력 버퍼를 비우고 줄바꿈 하나를 쓴 뒤 1초 기다린다.
