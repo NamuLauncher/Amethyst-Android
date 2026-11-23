@@ -206,13 +206,8 @@ int amethyst_launch_jvm(int argc, char **argv) {
     return launchJVM(argc, argv, false);
 }
 
-typedef int (*ExternalLaunch)(JNIEnv *, jobject, jobjectArray, jstring, jstring,
-                              jstring, jstring, jstring, AuthYouHost *);
-
-JNIEXPORT jint JNICALL Java_com_oracle_dalvik_VMLauncher_launchWithAuthYou(
-        JNIEnv *env, jclass clazz, jobject context, jobjectArray args,
-        jstring server_id, jstring user_id, jstring host, jstring base_directory,
-        jstring file_set_id) {
+JNIEXPORT jlong JNICALL Java_com_oracle_dalvik_VMLauncher_authYouHost(JNIEnv *env, jclass clazz) {
+    (void)env;
     (void)clazz;
     static AuthYouHost amethyst = {
         .log = game_log_to_app,
@@ -223,22 +218,8 @@ JNIEXPORT jint JNICALL Java_com_oracle_dalvik_VMLauncher_launchWithAuthYou(
 
     if (!game_log_has_listener()) {
         LOGE("Game log listener is not registered");
-        return AUTHYOU_START_FAILED;
+        return 0;
     }
 
-    void *library = dlopen("libauthyou_bridge.so", RTLD_NOW | RTLD_LOCAL);
-    if (library == NULL) {
-        LOGE("Load libauthyou_bridge.so: %s", dlerror());
-        return AUTHYOU_START_FAILED;
-    }
-
-    ExternalLaunch launch = (ExternalLaunch)dlsym(library, "authyou_launch");
-    if (launch == NULL) {
-        LOGE("Find authyou_launch: %s", dlerror());
-        dlclose(library);
-        return AUTHYOU_START_FAILED;
-    }
-
-    // 시그널 핸들러는 게임 프로세스가 종료될 때까지 브리지 코드를 사용한다.
-    return launch(env, context, args, server_id, user_id, host, base_directory, file_set_id, &amethyst);
+    return (jlong)(uintptr_t)&amethyst;
 }

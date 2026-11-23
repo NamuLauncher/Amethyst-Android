@@ -440,14 +440,12 @@ public class JREUtils {
             if (authYou == null) {
                 exitCode = VMLauncher.launchJVM(arguments);
             } else {
-                exitCode = VMLauncher.launchWithAuthYou(
+                exitCode = AuthYouLauncher.launch(
                         activity.getApplicationContext(),
                         arguments,
-                        authYou.serverId,
+                        authYou,
                         profileId,
-                        authYou.host,
-                        effectiveGameDirectory.getAbsolutePath(),
-                        authYou.fileSetId
+                        effectiveGameDirectory.getAbsolutePath()
                 );
             }
         }
