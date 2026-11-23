@@ -210,7 +210,7 @@ JNIEXPORT jlong JNICALL Java_com_oracle_dalvik_VMLauncher_authYouHost(JNIEnv *en
     (void)env;
     (void)clazz;
     static AuthYouHost amethyst = {
-        .log = game_log_to_app,
+        .log = authyou_log_to_app,
         .begin_logging = game_log_begin,
         .end_logging = game_log_end,
         .launch_jvm = amethyst_launch_jvm,

@@ -42,9 +42,13 @@ int game_log_has_listener(void) {
     return atomic_load(&listener_registered);
 }
 
-void game_log_to_app(const char *bytes, size_t size) {
-    if (!game_log_has_listener() || size > INT_MAX) {
-        return;
+// 반환값은 전송 성공 여부와 관계없이 리스너가 등록돼 있었는지를 나타낸다.
+static bool deliver_log(const char *bytes, size_t size, bool report_delivery_error) {
+    if (!game_log_has_listener()) {
+        return false;
+    }
+    if (size > INT_MAX) {
+        return true;
     }
 
     JavaVM *vm = pojav_environ->dalvikJavaVMPtr;
@@ -55,7 +59,7 @@ void game_log_to_app(const char *bytes, size_t size) {
         result = (*vm)->AttachCurrentThread(vm, &env, NULL);
     }
     if (result != JNI_OK) {
-        return;
+        return true;
     }
 
     jbyteArray text = (*env)->NewByteArray(env, (jsize)size);
@@ -68,11 +72,28 @@ void game_log_to_app(const char *bytes, size_t size) {
     }
     if ((*env)->ExceptionCheck(env)) {
         (*env)->ExceptionClear(env);
-        __android_log_write(ANDROID_LOG_ERROR, "Amethyst", "Deliver game log to app failed");
+        if (report_delivery_error) {
+            __android_log_write(ANDROID_LOG_ERROR, "Amethyst", "Deliver game log to app failed");
+        }
     }
     if (attached) {
         (*vm)->DetachCurrentThread(vm);
     }
+    return true;
+}
+
+static void game_log_to_app(const char *bytes, size_t size) {
+    deliver_log(bytes, size, true);
+}
+
+void authyou_log_to_app(AuthYouLogKind kind, const char *bytes, size_t size) {
+    if (deliver_log(bytes, size, false) || kind == AUTHYOU_GAME_OUTPUT ||
+        size == 0 || size > INT_MAX) {
+        return;
+    }
+
+    int priority = kind == AUTHYOU_LOG_ERROR ? ANDROID_LOG_ERROR : ANDROID_LOG_INFO;
+    __android_log_print(priority, "AuthYou", "%.*s", (int)size, bytes);
 }
 
 static bool record_buffer(const char *bytes, size_t size) {

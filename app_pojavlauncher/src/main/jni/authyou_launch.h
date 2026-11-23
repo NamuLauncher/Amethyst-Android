@@ -8,8 +8,14 @@ enum { AUTHYOU_START_FAILED = 91 };
 
 typedef void (*AuthYouOutput)(uintptr_t handle, const char *bytes, size_t size);
 
+typedef enum {
+    AUTHYOU_GAME_OUTPUT,
+    AUTHYOU_LOG_INFO,
+    AUTHYOU_LOG_ERROR,
+} AuthYouLogKind;
+
 typedef struct {
-    void (*log)(const char *bytes, size_t size);
+    void (*log)(AuthYouLogKind kind, const char *bytes, size_t size);
     int (*begin_logging)(AuthYouOutput output, uintptr_t handle);
     void (*end_logging)(void);
     int (*launch_jvm)(int argc, char **argv);

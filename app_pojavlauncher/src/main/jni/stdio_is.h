@@ -9,7 +9,7 @@
 #include "authyou_launch.h"
 
 int game_log_has_listener(void);
-void game_log_to_app(const char *bytes, size_t size);
+void authyou_log_to_app(AuthYouLogKind kind, const char *bytes, size_t size);
 int game_log_begin(AuthYouOutput output, uintptr_t handle);
 void game_log_end(void);
 void game_log_flush_on_exit(void);
