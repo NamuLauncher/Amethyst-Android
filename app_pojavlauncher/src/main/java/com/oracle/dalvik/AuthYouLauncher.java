@@ -7,6 +7,8 @@ import androidx.annotation.Keep;
 
 import net.kdt.pojavlaunch.runtime.AuthYouLaunchOptions;
 
+import java.nio.charset.StandardCharsets;
+
 @Keep
 public final class AuthYouLauncher {
     private static final int START_FAILED = 91;
@@ -27,15 +29,19 @@ public final class AuthYouLauncher {
 
         try {
             System.loadLibrary("authyou_bridge");
-            return launchNative(
+            byte[][] nativeArguments = new byte[arguments.length][];
+            for (int i = 0; i < arguments.length; i++) {
+                nativeArguments[i] = utf8(arguments[i]);
+            }
+            return launchNativeUtf8(
                     callbacks,
                     applicationContext,
-                    arguments,
-                    options.serverId,
-                    profileId,
-                    options.host,
-                    baseDirectory,
-                    options.fileSetId
+                    nativeArguments,
+                    utf8(options.serverId),
+                    utf8(profileId),
+                    utf8(options.host),
+                    utf8(baseDirectory),
+                    utf8(options.fileSetId)
             );
         } catch (UnsatisfiedLinkError failure) {
             Log.e("Amethyst", "Load AuthYou bridge or find its JNI entry point failed", failure);
@@ -43,14 +49,18 @@ public final class AuthYouLauncher {
         }
     }
 
-    private static native int launchNative(
+    private static byte[] utf8(String value) {
+        return value == null ? null : value.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static native int launchNativeUtf8(
             long callbacks,
             Context applicationContext,
-            String[] args,
-            String serverId,
-            String userId,
-            String host,
-            String baseDirectory,
-            String fileSetId
+            byte[][] args,
+            byte[] serverId,
+            byte[] userId,
+            byte[] host,
+            byte[] baseDirectory,
+            byte[] fileSetId
     );
 }
