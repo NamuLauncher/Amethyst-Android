@@ -215,12 +215,16 @@ JNIEXPORT jint JNICALL Java_com_oracle_dalvik_VMLauncher_launchWithAuthYou(
         jstring file_set_id) {
     (void)clazz;
     static AuthYouHost amethyst = {
-        .has_listener = game_log_has_listener,
         .log = game_log_to_app,
         .begin_logging = game_log_begin,
         .end_logging = game_log_end,
         .launch_jvm = amethyst_launch_jvm,
     };
+
+    if (!game_log_has_listener()) {
+        LOGE("Game log listener is not registered");
+        return AUTHYOU_START_FAILED;
+    }
 
     void *library = dlopen("libauthyou_bridge.so", RTLD_NOW | RTLD_LOCAL);
     if (library == NULL) {

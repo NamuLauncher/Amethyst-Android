@@ -9,7 +9,6 @@ enum { AUTHYOU_START_FAILED = 91 };
 typedef void (*AuthYouOutput)(uintptr_t handle, const char *bytes, size_t size);
 
 typedef struct {
-    int (*has_listener)(void);
     void (*log)(const char *bytes, size_t size);
     int (*begin_logging)(AuthYouOutput output, uintptr_t handle);
     void (*end_logging)(void);
