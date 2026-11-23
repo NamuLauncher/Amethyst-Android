@@ -46,7 +46,7 @@ public class GameRunStoreTest {
         assertTrue(recorder.attachProcess(123, 110));
         assertEquals(123, reader.read().processId);
         assertTrue(recorder.jvmStarted(120));
-        assertEquals(GameRunSnapshot.Stage.JVM_STARTED, reader.read().stage);
+        assertEquals(GameRunSnapshot.Stage.GAME_LAUNCH_STARTED, reader.read().stage);
         assertTrue(recorder.firstFrame(130));
         GameRunSnapshot frame = reader.read();
         assertEquals(GameRunSnapshot.Stage.FIRST_FRAME, frame.stage);

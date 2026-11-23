@@ -23,11 +23,15 @@ import net.kdt.pojavlaunch.services.GameService;
 /** 게임 프로세스에서만 사용하는 실행 기록 연결부. 호스트는 AmethystRuntime을 사용한다. */
 public final class RuntimeGameSession {
     static final String EXTRA_RUN_DIRECTORY = "net.kdt.pojavlaunch.runtime.RUN_DIRECTORY";
+    static final String EXTRA_AUTHYOU_HOST = "net.kdt.pojavlaunch.runtime.AUTHYOU_HOST";
+    static final String EXTRA_AUTHYOU_SERVER = "net.kdt.pojavlaunch.runtime.AUTHYOU_SERVER";
+    static final String EXTRA_AUTHYOU_FILE_SET = "net.kdt.pojavlaunch.runtime.AUTHYOU_FILE_SET";
     static final String ACTION_STOP_GAME = "net.kdt.pojavlaunch.runtime.STOP_GAME";
     private static Context application;
     private static GameRunStore store;
     private static GameRunRecorder recorder;
     private static boolean loggingStarted;
+    private static AuthYouLaunchOptions authYou;
     private static boolean hostRequested;
     private static final long CHECKPOINT_INTERVAL_MILLIS = 30_000;
     private static ScheduledExecutorService checkpoints;
@@ -42,6 +46,14 @@ public final class RuntimeGameSession {
             return;
         }
         hostRequested = true;
+        String authYouHost = intent.getStringExtra(EXTRA_AUTHYOU_HOST);
+        String authYouServer = intent.getStringExtra(EXTRA_AUTHYOU_SERVER);
+        if (authYouHost != null && authYouServer != null) {
+            authYou = new AuthYouLaunchOptions(
+                    authYouHost, authYouServer, intent.getStringExtra(EXTRA_AUTHYOU_FILE_SET));
+        } else if (authYouHost != null || authYouServer != null) {
+            throw new IOException("Incomplete AuthYou launch settings");
+        }
         if (runId == null || directory == null) {
             throw new IOException("실행 기록 정보가 불완전합니다");
         }
@@ -97,6 +109,11 @@ public final class RuntimeGameSession {
         if (recorder != null && loggingStarted) {
             return;
         }
+        if (authYou != null) {
+            Logger.addLogListener(text -> Log.i("AmethystGame", text));
+            loggingStarted = true;
+            return;
+        }
         File log = recorder == null ? fallbackLog : store.logFile();
         if (!log.isFile() && !log.createNewFile()) {
             throw new IOException("게임 로그 파일을 만들지 못했습니다");
@@ -107,14 +124,21 @@ public final class RuntimeGameSession {
         }
     }
 
+    public static AuthYouLaunchOptions authYouOptions() {
+        return authYou;
+    }
+
     public static synchronized String errorFileArgument() {
+        if (authYou != null) {
+            return "-XX:ErrorFile=hs_err_pid%p.log";
+        }
         if (recorder == null) {
             return null;
         }
         return "-XX:ErrorFile=" + store.errorFilePattern().getAbsolutePath();
     }
 
-    public static synchronized void onJvmStarted() {
+    public static synchronized void onGameLaunchStarted() {
         update(() -> recorder.jvmStarted(System.currentTimeMillis()));
         startCheckpoints();
     }

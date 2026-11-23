@@ -53,7 +53,7 @@ public final class RuntimeProbeService extends Service {
             } else if (ATTACH.equals(operation)) {
                 RuntimeGameSession.attach(this, intent.getStringExtra(EXTRA_RUN_ID), directory);
             } else if (JVM_STARTED.equals(operation)) {
-                RuntimeGameSession.onJvmStarted();
+                RuntimeGameSession.onGameLaunchStarted();
             } else if (FIRST_FRAME.equals(operation)) {
                 RuntimeGameSession.onFirstFrame();
             } else if (EXIT.equals(operation)) {
@@ -74,7 +74,7 @@ public final class RuntimeProbeService extends Service {
                 RuntimeGameSession.onUserStop();
                 RuntimeGameSession.onFailure(new IllegalStateException("Test late failure"));
                 RuntimeGameSession.onFirstFrame();
-                RuntimeGameSession.onJvmStarted();
+                RuntimeGameSession.onGameLaunchStarted();
                 stopSelf();
                 Process.killProcess(Process.myPid());
             } else {

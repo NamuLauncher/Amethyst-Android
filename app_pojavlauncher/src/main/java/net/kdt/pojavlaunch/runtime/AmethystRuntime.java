@@ -345,6 +345,13 @@ public final class AmethystRuntime {
 
     /** 실행마다 다른 ID와 비어 있는 앱 내부 폴더를 지정한다. 기존 실행으로 복귀할 때는 인자 없는 오버로드를 쓴다. */
     public static void launchGame(Activity activity, String runId, File runDirectory) throws IOException {
+        launchGame(activity, runId, runDirectory, null);
+    }
+
+    /** 호스트가 서버별 AuthYou 설정을 제공하면 게임 프로세스에서 인증한 뒤 JVM을 시작한다. */
+    public static void launchGame(
+            Activity activity, String runId, File runDirectory, AuthYouLaunchOptions authYou
+    ) throws IOException {
         if (isGameRunning(activity)) {
             throw new IllegalStateException("게임이 이미 실행 중입니다");
         }
@@ -359,6 +366,11 @@ public final class AmethystRuntime {
         Intent intent = new Intent(activity, MainActivity.class)
                 .putExtra(EXTRA_RUN_ID, runId)
                 .putExtra(RuntimeGameSession.EXTRA_RUN_DIRECTORY, directory.getAbsolutePath());
+        if (authYou != null) {
+            intent.putExtra(RuntimeGameSession.EXTRA_AUTHYOU_HOST, authYou.host);
+            intent.putExtra(RuntimeGameSession.EXTRA_AUTHYOU_SERVER, authYou.serverId);
+            intent.putExtra(RuntimeGameSession.EXTRA_AUTHYOU_FILE_SET, authYou.fileSetId);
+        }
         try {
             activity.startActivity(intent);
         } catch (RuntimeException failure) {

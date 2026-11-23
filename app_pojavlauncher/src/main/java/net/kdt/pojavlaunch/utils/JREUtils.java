@@ -32,6 +32,7 @@ import net.kdt.pojavlaunch.lifecycle.LifecycleAwareAlertDialog;
 import net.kdt.pojavlaunch.multirt.MultiRTUtils;
 import net.kdt.pojavlaunch.multirt.Runtime;
 import net.kdt.pojavlaunch.runtime.RuntimeGameSession;
+import net.kdt.pojavlaunch.runtime.AuthYouLaunchOptions;
 import net.kdt.pojavlaunch.plugins.FFmpegPlugin;
 import net.kdt.pojavlaunch.prefs.*;
 import net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles;
@@ -336,7 +337,14 @@ public class JREUtils {
             reader.close();
         }
     }
-    public static void launchJavaVM(final AppCompatActivity activity, final Runtime runtime, File gameDirectory, final List<String> JVMArgs, final String userArgsString) throws Throwable {
+    public static void launchJavaVM(
+            AppCompatActivity activity,
+            Runtime runtime,
+            File gameDirectory,
+            List<String> JVMArgs,
+            String userArgsString,
+            String profileId
+    ) throws Throwable {
         String runtimeHome = MultiRTUtils.getRuntimeHome(runtime.name).getAbsolutePath();
 
         File effectiveGameDirectory = gameDirectory;
@@ -420,13 +428,35 @@ public class JREUtils {
         initJavaRuntime(runtimeHome);
         JREUtils.setupExitMethod(activity.getApplication());
         JREUtils.initializeHooks();
-        chdir(effectiveGameDirectory.getAbsolutePath());
-        userArgs.add(0,"java"); //argv[0] is the program name according to C standard.
+        final int exitCode;
+        AuthYouLaunchOptions authYou = RuntimeGameSession.authYouOptions();
+        if (chdir(effectiveGameDirectory.getAbsolutePath()) != 0) {
+            Log.e("Amethyst", "Set game working directory failed: " + effectiveGameDirectory);
+            exitCode = 91;
+        } else {
+            userArgs.add(0, "java");
+            String[] arguments = userArgs.toArray(new String[0]);
+            RuntimeGameSession.onGameLaunchStarted();
+            if (authYou == null) {
+                exitCode = VMLauncher.launchJVM(arguments);
+            } else {
+                exitCode = VMLauncher.launchWithAuthYou(
+                        activity.getApplicationContext(),
+                        arguments,
+                        authYou.serverId,
+                        profileId,
+                        authYou.host,
+                        effectiveGameDirectory.getAbsolutePath(),
+                        authYou.fileSetId
+                );
+            }
+        }
 
-        RuntimeGameSession.onJvmStarted();
-        final int exitCode = VMLauncher.launchJVM(userArgs.toArray(new String[0]));
-        boolean handledByHost = RuntimeGameSession.onExit(exitCode, false);
         Logger.appendToLog("Java Exit code: " + exitCode);
+        if (authYou == null) {
+            Logger.end();
+        }
+        boolean handledByHost = RuntimeGameSession.onExit(exitCode, false);
         if (!handledByHost && exitCode != 0) {
             LifecycleAwareAlertDialog.DialogCreator dialogCreator = (dialog, builder)->
                     builder.setMessage(activity.getString(R.string.mcn_exit_title, exitCode))

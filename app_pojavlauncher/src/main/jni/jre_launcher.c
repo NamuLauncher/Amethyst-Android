@@ -34,6 +34,7 @@
 #include <string.h>
 
 #include "log.h"
+#include "stdio_is.h"
 #include "utils.h"
 #include "environ/environ.h"
 
@@ -121,29 +122,24 @@ static void abort_waiter_setup() {
     }
 }
 
-static jint launchJVM(int margc, char** margv) {
+static jint launchJVM(int margc, char **margv, bool use_default_signals) {
    void* libjli = dlopen("libjli.so", RTLD_LAZY | RTLD_GLOBAL);
 
-   // Unset all signal handlers to create a good slate for JVM signal detection.
-   struct sigaction clean_sa;
-   memset(&clean_sa, 0, sizeof (struct sigaction));
-   for(int sigid = SIGHUP; sigid < NSIG; sigid++) {
-       // For some reason Android specifically checks if you set SIGSEGV to SIG_DFL.
-       // There's probably a good reason for that but the signal handler here is
-       // temporary and will be replaced by the Java VM's signal/crash handler.
-       // Work around the warning by using SIG_IGN for SIGSEGV
-       if(sigid == SIGSEGV) clean_sa.sa_handler = SIG_IGN;
-       else clean_sa.sa_handler = SIG_DFL;
-       sigaction(sigid, &clean_sa, NULL);
+   if (use_default_signals) {
+       struct sigaction clean_sa = {0};
+       sigemptyset(&clean_sa.sa_mask);
+       for (int signal_number = SIGHUP; signal_number < NSIG; ++signal_number) {
+           clean_sa.sa_handler = signal_number == SIGSEGV ? SIG_IGN : SIG_DFL;
+           sigaction(signal_number, &clean_sa, NULL);
+       }
+       abort_waiter_setup();
    }
-   // Set up the thread that will abort the launcher with an user-facing dialog on a signal.
-   abort_waiter_setup();
 
    // Boardwalk: silence
    // LOGD("JLI lib = %x", (int)libjli);
    if (NULL == libjli) {
        LOGE("JLI lib = NULL: %s", dlerror());
-       return -1;
+       return use_default_signals ? -1 : AUTHYOU_START_FAILED;
    }
    LOGD("Found JLI lib");
 
@@ -153,8 +149,8 @@ static jint launchJVM(int margc, char** margv) {
     // LOGD("JLI_Launch = 0x%x", *(int*)&pJLI_Launch);
 
    if (NULL == pJLI_Launch) {
-       LOGE("JLI_Launch = NULL");
-       return -1;
+       LOGE("Find JLI_Launch: %s", dlerror());
+       return use_default_signals ? -1 : AUTHYOU_START_FAILED;
    }
 
    LOGD("Calling JLI_Launch");
@@ -196,7 +192,7 @@ JNIEXPORT jint JNICALL Java_com_oracle_dalvik_VMLauncher_launchJVM(JNIEnv *env, 
 
     LOGD("Done processing args");
 
-    res = launchJVM(argc, argv);
+    res = launchJVM(argc, argv, true);
 
     LOGD("Going to free args");
     free_char_array(env, argsArray, argv);
@@ -204,4 +200,41 @@ JNIEXPORT jint JNICALL Java_com_oracle_dalvik_VMLauncher_launchJVM(JNIEnv *env, 
     LOGD("Free done");
 
     return res;
+}
+
+int amethyst_launch_jvm(int argc, char **argv) {
+    return launchJVM(argc, argv, false);
+}
+
+typedef int (*ExternalLaunch)(JNIEnv *, jobject, jobjectArray, jstring, jstring,
+                              jstring, jstring, jstring, AuthYouHost *);
+
+JNIEXPORT jint JNICALL Java_com_oracle_dalvik_VMLauncher_launchWithAuthYou(
+        JNIEnv *env, jclass clazz, jobject context, jobjectArray args,
+        jstring server_id, jstring user_id, jstring host, jstring base_directory,
+        jstring file_set_id) {
+    (void)clazz;
+    static AuthYouHost amethyst = {
+        .has_listener = game_log_has_listener,
+        .log = game_log_to_app,
+        .begin_logging = game_log_begin,
+        .end_logging = game_log_end,
+        .launch_jvm = amethyst_launch_jvm,
+    };
+
+    void *library = dlopen("libauthyou_bridge.so", RTLD_NOW | RTLD_LOCAL);
+    if (library == NULL) {
+        LOGE("Load libauthyou_bridge.so: %s", dlerror());
+        return AUTHYOU_START_FAILED;
+    }
+
+    ExternalLaunch launch = (ExternalLaunch)dlsym(library, "authyou_launch");
+    if (launch == NULL) {
+        LOGE("Find authyou_launch: %s", dlerror());
+        dlclose(library);
+        return AUTHYOU_START_FAILED;
+    }
+
+    // 시그널 핸들러는 게임 프로세스가 종료될 때까지 브리지 코드를 사용한다.
+    return launch(env, context, args, server_id, user_id, host, base_directory, file_set_id, &amethyst);
 }

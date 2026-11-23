@@ -148,7 +148,7 @@ public final class GameRunElapsedTimeTest {
         assertNull(store.read().jvmElapsedMillis);
         elapsed.set(10_250);
         assertTrue(recorder.checkpoint(300));
-        assertEquals(GameRunSnapshot.Stage.JVM_STARTED, store.read().stage);
+        assertEquals(GameRunSnapshot.Stage.GAME_LAUNCH_STARTED, store.read().stage);
         assertEquals(Long.valueOf(200), store.read().jvmStartedAt);
         assertEquals(Long.valueOf(250), store.read().jvmElapsedMillis);
     }

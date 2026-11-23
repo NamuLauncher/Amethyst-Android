@@ -6,7 +6,7 @@ import java.util.Objects;
 public final class GameRunSnapshot {
     public enum Stage {
         STARTING,
-        JVM_STARTED,
+        GAME_LAUNCH_STARTED,
         FIRST_FRAME,
         EXITED,
         FAILED,
@@ -89,7 +89,7 @@ public final class GameRunSnapshot {
         if (stage == Stage.STARTING && (jvmStartedAt != null || firstFrameAt != null)) {
             throw new IllegalArgumentException("시작 전 상태에 JVM 관측 기록이 있습니다");
         }
-        if (stage == Stage.JVM_STARTED && (jvmStartedAt == null || firstFrameAt != null)) {
+        if (stage == Stage.GAME_LAUNCH_STARTED && (jvmStartedAt == null || firstFrameAt != null)) {
             throw new IllegalArgumentException("JVM 시작 상태의 관측 기록이 올바르지 않습니다");
         }
         if (stage == Stage.FIRST_FRAME && firstFrameAt == null) {

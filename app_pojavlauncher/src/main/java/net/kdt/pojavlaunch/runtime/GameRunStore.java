@@ -70,7 +70,7 @@ final class GameRunStore {
             }
             return new GameRunSnapshot(
                     required(values, "runId"),
-                    GameRunSnapshot.Stage.valueOf(required(values, "stage")),
+                    readStage(required(values, "stage")),
                     Long.parseLong(required(values, "startedAt")),
                     Long.parseLong(required(values, "updatedAt")),
                     Integer.parseInt(required(values, "processId")),
@@ -138,6 +138,13 @@ final class GameRunStore {
             throw new IllegalArgumentException("실행 상태의 필수 항목이 없습니다: " + key);
         }
         return value;
+    }
+
+    private static GameRunSnapshot.Stage readStage(String value) {
+        if (value.equals("JVM_STARTED")) {
+            return GameRunSnapshot.Stage.GAME_LAUNCH_STARTED;
+        }
+        return GameRunSnapshot.Stage.valueOf(value);
     }
 
     private static Long optionalLong(Properties values, String key) {

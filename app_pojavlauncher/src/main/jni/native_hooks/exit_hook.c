@@ -5,6 +5,7 @@
 
 #include <jni.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <bytehook.h>
 #include <dlfcn.h>
 #include <stdlib.h>
@@ -26,10 +27,10 @@ static void custom_exit(int code) {
 }
 
 static void custom_atexit() {
-    if(exit_tripped) {
+    if (atomic_exchange(&exit_tripped, true)) {
         return;
     }
-    exit_tripped = true;
+    game_log_flush_on_exit();
     nominal_exit(exit_code, false);
 }
 
