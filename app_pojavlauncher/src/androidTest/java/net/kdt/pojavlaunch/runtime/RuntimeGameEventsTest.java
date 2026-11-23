@@ -99,8 +99,8 @@ public final class RuntimeGameEventsTest {
         assertNull(attached.firstFrameAt);
         assertNull(attached.jvmElapsedMillis);
 
-        command(RuntimeProbeService.JVM_STARTED);
-        GameRunSnapshot started = awaitStage(GameRunSnapshot.Stage.JVM_STARTED);
+        command(RuntimeProbeService.GAME_LAUNCH_STARTED);
+        GameRunSnapshot started = awaitStage(GameRunSnapshot.Stage.GAME_LAUNCH_STARTED);
         assertNotNull(started.jvmStartedAt);
         assertNull(started.firstFrameAt);
         assertEquals(Long.valueOf(0), started.jvmElapsedMillis);
@@ -122,8 +122,8 @@ public final class RuntimeGameEventsTest {
     @Test
     public void gameProcessCheckpointsElapsedTimeWhileTheHostHasNoEventReceiver() throws Exception {
         attach();
-        command(RuntimeProbeService.JVM_STARTED);
-        GameRunSnapshot started = awaitStage(GameRunSnapshot.Stage.JVM_STARTED);
+        command(RuntimeProbeService.GAME_LAUNCH_STARTED);
+        GameRunSnapshot started = awaitStage(GameRunSnapshot.Stage.GAME_LAUNCH_STARTED);
         assertEquals(Long.valueOf(0), started.jvmElapsedMillis);
         context.unregisterReceiver(receiver);
         receiver = null;
@@ -141,7 +141,7 @@ public final class RuntimeGameEventsTest {
             SystemClock.sleep(50);
         }
         assertNotNull("게임 프로세스가 경과시간 체크포인트를 기록하지 않았습니다", checkpoint);
-        assertEquals(GameRunSnapshot.Stage.JVM_STARTED, checkpoint.stage);
+        assertEquals(GameRunSnapshot.Stage.GAME_LAUNCH_STARTED, checkpoint.stage);
         assertEquals(started.jvmStartedAt, checkpoint.jvmStartedAt);
         assertTrue(checkpoint.processAliveMillis >= 30_000);
         assertTrue(checkpoint.processAliveMillis >= checkpoint.jvmElapsedMillis);
@@ -235,8 +235,8 @@ public final class RuntimeGameEventsTest {
     @Test
     public void lateStopFailureAndFrameDoNotReplaceTheFirstTerminalResult() throws Exception {
         attach();
-        command(RuntimeProbeService.JVM_STARTED);
-        awaitStage(GameRunSnapshot.Stage.JVM_STARTED);
+        command(RuntimeProbeService.GAME_LAUNCH_STARTED);
+        awaitStage(GameRunSnapshot.Stage.GAME_LAUNCH_STARTED);
 
         command(RuntimeProbeService.EXIT_THEN_LATE_CALLBACKS);
         awaitNoGameProcess();
@@ -252,15 +252,15 @@ public final class RuntimeGameEventsTest {
     @Test
     public void stopRequestIsScopedToTheCurrentRunAndActuallyEndsItsProcess() throws Exception {
         GameRunSnapshot attached = attach();
-        command(RuntimeProbeService.JVM_STARTED);
-        awaitStage(GameRunSnapshot.Stage.JVM_STARTED);
+        command(RuntimeProbeService.GAME_LAUNCH_STARTED);
+        awaitStage(GameRunSnapshot.Stage.GAME_LAUNCH_STARTED);
 
         AmethystRuntime.stopGame(context, "AnotherTestRun");
         // 다른 실행 ID의 비동기 요청이 현재 실행을 종료하지 않는지 관측한다.
         long deadline = SystemClock.uptimeMillis() + 300;
         while (SystemClock.uptimeMillis() < deadline) {
             assertEquals(Integer.valueOf(attached.processId), gameProcessId());
-            assertEquals(GameRunSnapshot.Stage.JVM_STARTED, AmethystRuntime.readGameRun(directory).stage);
+            assertEquals(GameRunSnapshot.Stage.GAME_LAUNCH_STARTED, AmethystRuntime.readGameRun(directory).stage);
             SystemClock.sleep(25);
         }
 
@@ -276,8 +276,8 @@ public final class RuntimeGameEventsTest {
 
     private void verifyExit(int exitCode, boolean signal) throws Exception {
         GameRunSnapshot attached = attach();
-        command(RuntimeProbeService.JVM_STARTED);
-        awaitStage(GameRunSnapshot.Stage.JVM_STARTED);
+        command(RuntimeProbeService.GAME_LAUNCH_STARTED);
+        awaitStage(GameRunSnapshot.Stage.GAME_LAUNCH_STARTED);
         Intent exit = probeIntent(RuntimeProbeService.EXIT)
                 .putExtra(RuntimeProbeService.EXTRA_EXIT_CODE, exitCode)
                 .putExtra(RuntimeProbeService.EXTRA_SIGNAL, signal);

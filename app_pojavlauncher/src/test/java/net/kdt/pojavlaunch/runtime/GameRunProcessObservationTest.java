@@ -36,7 +36,7 @@ public final class GameRunProcessObservationTest {
         assertNull(store.read().jvmElapsedMillis);
 
         clock.set(41_000);
-        recorder.jvmStarted(200);
+        recorder.gameLaunchStarted(200);
         assertEquals(Long.valueOf(40_000), store.read().processAliveMillis);
         assertEquals(Long.valueOf(0), store.read().jvmElapsedMillis);
         clock.set(46_000);

@@ -96,7 +96,7 @@ JVM 테스트는 실제 모의 HTTP의 chunked 응답·부분 실패 후 재요�
 
 ## 게임 JVM 경과시간
 
-`AmethystRuntime.readGameRun(directory)`의 `GameRunSnapshot.jvmElapsedMillis`는 JVM 진입 경계부터 관측한 누적 밀리초다. 준비·다운로드·인증 시간은 포함하지 않는다. `JREUtils`가 `VMLauncher.launchJVM()` 직전에 호출하는 `RuntimeGameSession.onJvmStarted()`에서 0으로 시작하며, 첫 프레임은 시작점을 바꾸지 않는다. 이 관측은 게임 로딩 완료나 서버 접속 성공을 뜻하지 않는다.
+`AmethystRuntime.readGameRun(directory)`의 `GameRunSnapshot.jvmElapsedMillis`는 JVM 진입 경계부터 관측한 누적 밀리초다. 준비·다운로드·인증 시간은 포함하지 않는다. `JREUtils`가 `VMLauncher.launchJVM()` 직전에 호출하는 `RuntimeGameSession.onGameLaunchStarted()`에서 0으로 시작하며, 첫 프레임은 시작점을 바꾸지 않는다. 이 관측은 게임 로딩 완료나 서버 접속 성공을 뜻하지 않는다.
 
 게임 프로세스의 `SystemClock.elapsedRealtime()` 차이를 사용하므로 기기의 날짜·시간 변경은 누적값에 영향을 주지 않는다. 기존 `startedAt`·`updatedAt`·`jvmStartedAt`·`firstFrameAt`은 계속 wall-clock 시각이다. 그 차이로 경과시간을 대체해서는 안 된다. JVM 진입 전·구형 파일의 값은 null이며 관측한 0밀리초와 구분한다.
 
@@ -170,3 +170,14 @@ API 26·35 x86_64에서 각각 두 계측이 실패·제외 없이 통과했다.
 API 26의 `RuntimeGameEventsTest`·`ApplicationContextTest` 12개도 실패·제외 없이 통과했다. 별도 프로세스의 상태·종료·정지·호스트 수신 및 Application의 Context 연결을 확인하며 실제 게임을 기동하는 테스트는 아니다. 런타임 AAR의 `libpojavexec.so`는 arm64-v8a·x86_64 두 ABI로 빌드됐다. 포함된 기존 prebuilt의 추가 ABI와 이 두 ABI의 코어 빌드 범위를 구분한다.
 
 함께 실행한 `:app_pojavlauncher:lintDebug`는 오류 86개·경고 300개로 실패했다. 기준 `8db2a63`에서도 같은 명령을 실행해 ID·심각도·메시지·소스 위치가 386건 모두 동일함을 확인했다. 이 변경에서 새 lint 오류는 없으며 전체 명령을 성공으로 표시하지 않는다. 기존 독립 런처 화면의 OnClick·번역·권한 등 전반을 고치거나 baseline/suppress 규칙으로 숨기는 변경은 포함하지 않는다. 이미 완료한 계측 12개와 AAR 빌드 결과는 이 lint 실패와 분리해 기록한다.
+
+## AuthYou 실행 경로
+
+호스트는 `AmethystRuntime.launchGame(activity, runId, runDirectory, new AuthYouLaunchRequest(serverId, userId, host, fileSetId))`로 AuthYou 인증 세션을 연 게임 실행을 요청한다. `fileSetId`는 선택 값이다. 호스트는 실행 전에 게임 폴더의 `ay/config.json`을 준비하고 앱 `jniLibs/<ABI>`에 AuthYou C(`libauthyou_launcher.so`)와 AuthYou Go(`libauthyou.so`)를 함께 넣는다. 두 라이브러리는 AuthYou2Server 저장소의 `client-android/build.sh`로 만든다. 설계는 AuthYou2Server의 `docs/android-signal-handling.md`를 따른다.
+
+- `:game`에서 작업 디렉터리를 게임 폴더로 바꾸지 못하면 AuthYou C를 호출하지 않는다. 이 실패와 AuthYou C 라이브러리·실행 함수를 찾지 못한 실패는 일반 종료 코드 `91`로 기록한다. AuthYou C·Go의 시작 전 실패도 `91`로 돌아온다.
+- 게임 실행을 요청하기 직전에 실행 기록을 `GAME_LAUNCH_STARTED`로 바꾼다. 이전 기록의 `JVM_STARTED`는 같은 값으로 읽는다.
+- AuthYou 경로에서는 `Logger.begin()` 대신 `Logger.openLogFile()`로 기본 경로와 같은 로그 파일(실행 기록이 있으면 `runtime.log`, 없으면 `latestlog.txt`)만 연다. 출력 파이프는 AuthYou Go가 `amethyst_begin_output()`으로 초기화한다. 게임 출력은 인증 세션과 `onEventLogged` 리스너에 전달하고, 앱 로그로 보낸 텍스트(AuthYou 로그, 필터를 통과한 게임 출력, `Java Exit code`)는 같은 로그 파일에 계속 기록한다. AuthYou Go는 리스너가 없으면 시작을 중단하므로 런타임이 빈 리스너를 등록해 둔다.
+- `amethyst_launch_jvm()`은 시그널 일괄 초기화와 `abort_waiter_setup()`을 하지 않는다. HotSpot보다 먼저 설치된 AuthYou Go·C의 핸들러를 보존해 HotSpot → AuthYou Go → AuthYou C 순서로 시그널을 넘기기 위해서다. 치명 시그널은 AuthYou C가 작업 디렉터리의 `ay_err_pid<PID>.log`에 기록하고 `ExitActivity.showExitMessage(context, signal, true)`로 통지한 뒤 `128 + signal`로 종료한다.
+- 기본 실행 경로는 `VMLauncher.launchJVM()`이 반환되고 종료 코드를 기록한 뒤 `Logger.endLogging()`을 호출한다. `endLogging()`은 stdout·stderr를 원래 대상으로 되돌리고 로그 스레드가 남은 출력을 기록할 때까지 기다린다.
+- 게임이 `exit()`를 호출하면 로그 파이프가 열려 있는 동안 stdout·stderr를 비우고 줄바꿈 하나를 쓴 뒤 1초 기다렸다가 종료 코드를 통지한다.

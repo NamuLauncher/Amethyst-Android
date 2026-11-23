@@ -31,6 +31,8 @@ import net.kdt.pojavlaunch.extra.ExtraCore;
 import net.kdt.pojavlaunch.lifecycle.LifecycleAwareAlertDialog;
 import net.kdt.pojavlaunch.multirt.MultiRTUtils;
 import net.kdt.pojavlaunch.multirt.Runtime;
+import net.kdt.pojavlaunch.authyou.AuthYouLauncher;
+import net.kdt.pojavlaunch.runtime.AuthYouLaunchRequest;
 import net.kdt.pojavlaunch.runtime.RuntimeGameSession;
 import net.kdt.pojavlaunch.plugins.FFmpegPlugin;
 import net.kdt.pojavlaunch.prefs.*;
@@ -420,13 +422,23 @@ public class JREUtils {
         initJavaRuntime(runtimeHome);
         JREUtils.setupExitMethod(activity.getApplication());
         JREUtils.initializeHooks();
-        chdir(effectiveGameDirectory.getAbsolutePath());
+        int changedDirectory = chdir(effectiveGameDirectory.getAbsolutePath());
         userArgs.add(0,"java"); //argv[0] is the program name according to C standard.
 
-        RuntimeGameSession.onJvmStarted();
-        final int exitCode = VMLauncher.launchJVM(userArgs.toArray(new String[0]));
+        AuthYouLaunchRequest authYou = RuntimeGameSession.authYouRequest();
+        final int exitCode;
+        if (authYou != null) {
+            exitCode = launchWithAuthYou(activity, effectiveGameDirectory, changedDirectory, userArgs, authYou);
+        } else {
+            RuntimeGameSession.onGameLaunchStarted();
+            exitCode = VMLauncher.launchJVM(userArgs.toArray(new String[0]));
+        }
         boolean handledByHost = RuntimeGameSession.onExit(exitCode, false);
         Logger.appendToLog("Java Exit code: " + exitCode);
+        if (authYou == null) {
+            // AuthYou 실행 경로에서는 AuthYou Go가 게임 실행 함수 반환 직후 endLogging()을 호출한다.
+            Logger.endLogging();
+        }
         if (!handledByHost && exitCode != 0) {
             LifecycleAwareAlertDialog.DialogCreator dialogCreator = (dialog, builder)->
                     builder.setMessage(activity.getString(R.string.mcn_exit_title, exitCode))
@@ -436,6 +448,36 @@ public class JREUtils {
         }
         Tools.fullyExit();
     }
+
+    /**
+     * AuthYou C를 통해 게임을 실행한다. 게임 작업 디렉터리를 바꾸지 못하면 AuthYou C를 호출하지 않는다.
+     */
+    private static int launchWithAuthYou(
+            AppCompatActivity activity,
+            File gameDirectory,
+            int changedDirectory,
+            List<String> jvmArguments,
+            AuthYouLaunchRequest request
+    ) {
+        if (changedDirectory == -1) {
+            AuthYouLauncher.logStartFailure("게임 작업 디렉터리를 바꾸지 못했습니다: " + gameDirectory.getAbsolutePath());
+            return AuthYouLauncher.START_FAILURE_EXIT_CODE;
+        }
+
+        // AuthYou Go는 자체 로그를 onEventLogged로만 전달하므로 리스너가 없으면 시작을 중단한다.
+        // 로그 화면 등 다른 리스너가 붙기 전에도 네이티브 리스너가 등록돼 있도록 빈 리스너를 둔다.
+        Logger.addLogListener(AUTHYOU_LOG_LISTENER);
+
+        RuntimeGameSession.onGameLaunchStarted();
+        return AuthYouLauncher.launchGame(
+                activity.getApplicationContext(),
+                jvmArguments.toArray(new String[0]),
+                gameDirectory,
+                request
+        );
+    }
+
+    private static final Logger.eventLogListener AUTHYOU_LOG_LISTENER = text -> {};
 
     /**
      *  Gives an argument list filled with both the user args

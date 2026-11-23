@@ -56,14 +56,14 @@ final class GameRunRecorder {
         ));
     }
 
-    synchronized boolean jvmStarted(long now) throws IOException {
+    synchronized boolean gameLaunchStarted(long now) throws IOException {
         if (current.stage != GameRunSnapshot.Stage.STARTING) {
             return false;
         }
         jvmStartTick = elapsedClock.getAsLong();
         return publish(new GameRunSnapshot(
                 current.runId,
-                GameRunSnapshot.Stage.JVM_STARTED,
+                GameRunSnapshot.Stage.GAME_LAUNCH_STARTED,
                 current.startedAt,
                 now,
                 current.processId,
@@ -78,7 +78,7 @@ final class GameRunRecorder {
     }
 
     synchronized boolean firstFrame(long now) throws IOException {
-        if (current.stage != GameRunSnapshot.Stage.JVM_STARTED) {
+        if (current.stage != GameRunSnapshot.Stage.GAME_LAUNCH_STARTED) {
             return false;
         }
         return publish(new GameRunSnapshot(

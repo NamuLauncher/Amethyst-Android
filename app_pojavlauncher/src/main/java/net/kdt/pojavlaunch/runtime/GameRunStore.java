@@ -70,7 +70,7 @@ final class GameRunStore {
             }
             return new GameRunSnapshot(
                     required(values, "runId"),
-                    GameRunSnapshot.Stage.valueOf(required(values, "stage")),
+                    parseStage(required(values, "stage")),
                     Long.parseLong(required(values, "startedAt")),
                     Long.parseLong(required(values, "updatedAt")),
                     Integer.parseInt(required(values, "processId")),
@@ -85,6 +85,14 @@ final class GameRunStore {
         } catch (IllegalArgumentException failure) {
             throw new IOException("실행 상태 파일의 형식이 올바르지 않습니다", failure);
         }
+    }
+
+    /** 이전 버전이 기록한 JVM_STARTED는 같은 의미의 GAME_LAUNCH_STARTED로 읽는다. */
+    private static GameRunSnapshot.Stage parseStage(String value) {
+        if ("JVM_STARTED".equals(value)) {
+            return GameRunSnapshot.Stage.GAME_LAUNCH_STARTED;
+        }
+        return GameRunSnapshot.Stage.valueOf(value);
     }
 
     void write(GameRunSnapshot snapshot) throws IOException {
