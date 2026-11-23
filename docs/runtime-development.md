@@ -177,7 +177,7 @@ API 26의 `RuntimeGameEventsTest`·`ApplicationContextTest` 12개도 실패·제
 
 - `:game`에서 작업 디렉터리를 게임 폴더로 바꾸지 못하면 AuthYou C를 호출하지 않는다. 이 실패와 AuthYou C 라이브러리·실행 함수를 찾지 못한 실패는 일반 종료 코드 `91`로 기록한다. AuthYou C·Go의 시작 전 실패도 `91`로 돌아온다.
 - 게임 실행을 요청하기 직전에 실행 기록을 `GAME_LAUNCH_STARTED`로 바꾼다. 이전 기록의 `JVM_STARTED`는 같은 값으로 읽는다.
-- AuthYou 경로에서는 `Logger.begin()` 대신 `Logger.openLogFile()`로 기본 경로와 같은 로그 파일(실행 기록이 있으면 `runtime.log`, 없으면 `latestlog.txt`)만 연다. 출력 파이프는 AuthYou Go가 `amethyst_begin_output()`으로 초기화한다. 게임 출력은 인증 세션과 `onEventLogged` 리스너에 전달하고, 앱 로그로 보낸 텍스트(AuthYou 로그, 필터를 통과한 게임 출력, `Java Exit code`)는 같은 로그 파일에 계속 기록한다. AuthYou Go는 리스너가 없으면 시작을 중단하므로 런타임이 빈 리스너를 등록해 둔다.
+- AuthYou 경로에서는 `Logger.begin()`을 호출하지 않는다. AuthYou Go가 `amethyst_begin_output()`으로 출력 파이프를 초기화하고 게임 출력을 인증 세션과 `onEventLogged` 리스너에 전달한다. AuthYou Go는 리스너가 없으면 시작을 중단하므로 런타임이 `latest.log` 리스너를 등록한다. 이 리스너는 받은 텍스트(AuthYou 로그, 필터를 통과한 게임 출력, `appendToLog` 기록)를 버퍼 없이 한 줄씩 쓴다. 위치는 실행 기록 폴더(`AmethystRuntime.gameAuthYouLogFile(runDirectory)`)이며, 실행 기록이 없으면 `Tools.DIR_GAME_HOME`이다. `runtime.log`에는 게임 출력을 기록하지 않는다.
 - `amethyst_launch_jvm()`은 시그널 일괄 초기화와 `abort_waiter_setup()`을 하지 않는다. HotSpot보다 먼저 설치된 AuthYou Go·C의 핸들러를 보존해 HotSpot → AuthYou Go → AuthYou C 순서로 시그널을 넘기기 위해서다. 치명 시그널은 AuthYou C가 작업 디렉터리의 `ay_err_pid<PID>.log`에 기록하고 `ExitActivity.showExitMessage(context, signal, true)`로 통지한 뒤 `128 + signal`로 종료한다.
 - 기본 실행 경로는 `VMLauncher.launchJVM()`이 반환되고 종료 코드를 기록한 뒤 `Logger.endLogging()`을 호출한다. `endLogging()`은 stdout·stderr를 원래 대상으로 되돌리고 로그 스레드가 남은 출력을 기록할 때까지 기다린다.
 - 게임이 `exit()`를 호출하면 로그 파이프가 열려 있는 동안 stdout·stderr를 비우고 줄바꿈 하나를 쓴 뒤 1초 기다렸다가 종료 코드를 통지한다.

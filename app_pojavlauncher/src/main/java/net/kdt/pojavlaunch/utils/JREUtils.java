@@ -459,14 +459,14 @@ public class JREUtils {
             List<String> jvmArguments,
             AuthYouLaunchRequest request
     ) {
+        // AuthYou Go는 자체 로그를 onEventLogged로만 전달하므로 리스너가 없으면 시작을 중단한다.
+        // 시작 실패 기록도 남도록 작업 디렉터리 확인 전에 latest.log 리스너를 등록한다.
+        AuthYouLauncher.startLogFile(RuntimeGameSession.authYouLogFile(new File(Tools.DIR_GAME_HOME)));
+
         if (changedDirectory == -1) {
             AuthYouLauncher.logStartFailure("게임 작업 디렉터리를 바꾸지 못했습니다: " + gameDirectory.getAbsolutePath());
             return AuthYouLauncher.START_FAILURE_EXIT_CODE;
         }
-
-        // AuthYou Go는 자체 로그를 onEventLogged로만 전달하므로 리스너가 없으면 시작을 중단한다.
-        // 로그 화면 등 다른 리스너가 붙기 전에도 네이티브 리스너가 등록돼 있도록 빈 리스너를 둔다.
-        Logger.addLogListener(AUTHYOU_LOG_LISTENER);
 
         RuntimeGameSession.onGameLaunchStarted();
         return AuthYouLauncher.launchGame(
@@ -476,8 +476,6 @@ public class JREUtils {
                 request
         );
     }
-
-    private static final Logger.eventLogListener AUTHYOU_LOG_LISTENER = text -> {};
 
     /**
      *  Gives an argument list filled with both the user args

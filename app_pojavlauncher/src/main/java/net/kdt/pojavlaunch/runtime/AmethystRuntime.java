@@ -393,6 +393,11 @@ public final class AmethystRuntime {
         return new GameRunStore(runDirectory).logFile();
     }
 
+    /** AuthYou 실행 경로에서 앱 로그로 전달된 텍스트(AuthYou 로그, 필터를 통과한 게임 출력, 종료 코드)를 기록한 파일. */
+    public static File gameAuthYouLogFile(File runDirectory) {
+        return new GameRunStore(runDirectory).authYouLogFile();
+    }
+
     /** Java 실패의 타입과 호출 프레임만 기록하며 예외 메시지·JVM 인자를 포함하지 않는다. */
     public static File gameFailureFile(File runDirectory) {
         return new GameRunStore(runDirectory).failureFile();

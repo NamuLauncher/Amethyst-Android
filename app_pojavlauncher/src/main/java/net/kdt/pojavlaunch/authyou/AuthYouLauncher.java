@@ -25,6 +25,8 @@ public final class AuthYouLauncher {
     private static final String TAG = "AuthYou";
     private static final String LAUNCHER_LIBRARY = "authyou_launcher";
 
+    private static AuthYouLogFile logFileListener;
+
     private AuthYouLauncher() {}
 
     /** 게임 실행 결과 또는 시작 실패 코드 91을 반환한다. 치명 시그널이면 반환하지 않고 프로세스가 끝난다. */
@@ -55,6 +57,15 @@ public final class AuthYouLauncher {
             logStartFailure("AuthYou C의 게임 실행 함수를 찾지 못했습니다", failure);
             return START_FAILURE_EXIT_CODE;
         }
+    }
+
+    /** latest.log를 비우고 열어 onEventLogged 리스너로 등록한다. 게임 프로세스에서 한 번만 호출한다. */
+    public static void startLogFile(File logFile) {
+        if (logFileListener != null) {
+            return;
+        }
+        logFileListener = AuthYouLogFile.open(logFile);
+        Logger.addLogListener(logFileListener);
     }
 
     /** 크래시 보고서 파일을 열 수 없을 때도 남도록 Android 로그와 앱 로그에 함께 기록한다. */

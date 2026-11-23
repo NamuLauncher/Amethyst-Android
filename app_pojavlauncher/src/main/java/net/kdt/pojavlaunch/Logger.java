@@ -18,12 +18,6 @@ public class Logger {
     public static native void begin(String logFilePath);
 
     /**
-     * 출력 파이프를 만들지 않고 로그 파일만 비우고 연다. AuthYou 실행 경로에서 쓴다.
-     * 이후 appendToLog와 AuthYou Go가 앱 로그로 보내는 텍스트가 이 파일에 기록된다.
-     */
-    public static native void openLogFile(String logFilePath);
-
-    /**
      * 게임 출력 파이프를 닫는다. C 표준 입출력 버퍼를 비우고 stdout·stderr를 원래 대상으로 되돌린 뒤
      * 로그 스레드가 남은 출력을 모두 기록하고 끝날 때까지 기다린다. 한 번만 동작한다.
      */

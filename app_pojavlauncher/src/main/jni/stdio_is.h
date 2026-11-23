@@ -25,8 +25,7 @@ void amethyst_end_logging(void);
 bool amethyst_log_has_listener(void);
 bool amethyst_log_passes_filter(const char* data, size_t length);
 
-// 로그 파일이 열려 있으면 필터를 적용해 text와 줄바꿈을 기록하고, 등록된 리스너의 onEventLogged(text)를 호출한다.
-// ART에 등록되지 않은 스레드에서도 호출할 수 있다.
+// 등록된 리스너의 onEventLogged(text)를 호출한다. ART에 등록되지 않은 스레드에서도 호출할 수 있다.
 void amethyst_log_event(const char* text, size_t length);
 
 // exit() 처리 중 로그 파이프가 열려 있으면 출력 버퍼를 비우고 줄바꿈 하나를 쓴 뒤 1초 기다린다.

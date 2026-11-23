@@ -71,8 +71,6 @@ static void call_log_listener(JNIEnv* env, const char* text) {
     (*env)->DeleteLocalRef(env, writeString);
 }
 
-static void notify_log_listener(const char* text, size_t length);
-
 // 기본 실행 경로의 처리 함수. 필터를 적용해 로그 파일에 기록하고 리스너에 전달한다.
 static void record_game_output(const char* data, size_t length) {
     char buf[LOG_READ_BUFFER_SIZE];
@@ -87,7 +85,7 @@ static void record_game_output(const char* data, size_t length) {
         buf[length-1]=0x00; //truncate
     }
     if(shouldRecordString) {
-        notify_log_listener(buf, strlen(buf)); //send to app without newline
+        amethyst_log_event(buf, strlen(buf)); //send to app without newline
     }
 }
 
@@ -234,8 +232,7 @@ bool amethyst_log_passes_filter(const char* data, size_t length) {
     return passes;
 }
 
-// 등록된 리스너의 onEventLogged(text)를 호출한다. 로그 파일에는 쓰지 않는다.
-static void notify_log_listener(const char* text, size_t length) {
+void amethyst_log_event(const char* text, size_t length) {
     if(logListener == NULL) {
         return;
     }
@@ -269,28 +266,8 @@ static void notify_log_listener(const char* text, size_t length) {
     }
 }
 
-void amethyst_log_event(const char* text, size_t length) {
-    // 로그 파일에는 기존 기록과 같이 줄바꿈을 붙여 쓰고, 앱에는 받은 텍스트 그대로 전달한다.
-    char* buf = malloc(length + 2);
-    if(buf == NULL) {
-        return;
-    }
-    if(length > 0) {
-        memcpy(buf, text, length);
-    }
-    buf[length] = '\n';
-    buf[length + 1] = 0x00;
-
-    bool shouldRecordString = recordBuffer(buf, (ssize_t) length + 1);
-    free(buf);
-
-    if(shouldRecordString) {
-        notify_log_listener(text, length);
-    }
-}
-
-// 로그 파일을 비우고 연다. 실패하면 IOException을 던지고 false를 반환한다.
-static bool open_log_file(JNIEnv *env, jstring logPath) {
+JNIEXPORT void JNICALL
+Java_net_kdt_pojavlaunch_Logger_begin(JNIEnv *env, __attribute((unused)) jclass clazz, jstring logPath) {
     if(latestlog_fd != -1) {
         int localfd = latestlog_fd;
         latestlog_fd = -1;
@@ -308,17 +285,8 @@ static bool open_log_file(JNIEnv *env, jstring logPath) {
     (*env)->ReleaseStringUTFChars(env, logPath, logFilePath);
     if(latestlog_fd == -1) {
         (*env)->ThrowNew(env, ioeClass, strerror(errno));
-        return false;
-    }
-    return true;
-}
-
-JNIEXPORT void JNICALL
-Java_net_kdt_pojavlaunch_Logger_begin(JNIEnv *env, __attribute((unused)) jclass clazz, jstring logPath) {
-    if(!open_log_file(env, logPath)) {
         return;
     }
-    jclass ioeClass = (*env)->FindClass(env, "java/io/IOException");
 
     // 같은 프로세스에서 다시 호출되면 로그 파일만 바꾸고 출력 파이프는 그대로 쓴다.
     if(output_started && output_handler == record_game_output) {
@@ -332,11 +300,6 @@ Java_net_kdt_pojavlaunch_Logger_begin(JNIEnv *env, __attribute((unused)) jclass 
         latestlog_fd = -1;
         (*env)->ThrowNew(env, ioeClass, strerror(result));
     }
-}
-
-JNIEXPORT void JNICALL
-Java_net_kdt_pojavlaunch_Logger_openLogFile(JNIEnv *env, __attribute((unused)) jclass clazz, jstring logPath) {
-    open_log_file(env, logPath);
 }
 
 JNIEXPORT void JNICALL

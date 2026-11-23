@@ -105,6 +105,11 @@ public final class RuntimeGameSession {
     }
 
     public static synchronized void beginLogging(File fallbackLog) throws IOException {
+        // AuthYou 실행 경로에서는 AuthYou Go가 자체 출력 처리 함수로 출력 파이프를 초기화한다.
+        // 앱 로그로 전달된 텍스트는 AuthYou 로그 리스너가 latest.log에 기록한다.
+        if (authYouRequest != null) {
+            return;
+        }
         if (recorder != null && loggingStarted) {
             return;
         }
@@ -112,16 +117,18 @@ public final class RuntimeGameSession {
         if (!log.isFile() && !log.createNewFile()) {
             throw new IOException("게임 로그 파일을 만들지 못했습니다");
         }
-        if (authYouRequest != null) {
-            // AuthYou 실행 경로에서는 AuthYou Go가 자체 출력 처리 함수로 출력 파이프를 초기화한다.
-            // 같은 로그 파일에는 AuthYou 로그와 필터를 통과한 게임 출력처럼 앱 로그로 전달된 텍스트를 기록한다.
-            Logger.openLogFile(log.getAbsolutePath());
-        } else {
-            Logger.begin(log.getAbsolutePath());
-        }
+        Logger.begin(log.getAbsolutePath());
         if (recorder != null) {
             loggingStarted = true;
         }
+    }
+
+    /** AuthYou 실행 경로의 로그 파일. 실행 기록이 있으면 실행 기록 폴더, 없으면 fallbackDirectory의 latest.log다. */
+    public static synchronized File authYouLogFile(File fallbackDirectory) {
+        if (recorder == null) {
+            return new File(fallbackDirectory, GameRunStore.AUTHYOU_LOG_FILE_NAME);
+        }
+        return store.authYouLogFile();
     }
 
     public static synchronized String errorFileArgument() {
