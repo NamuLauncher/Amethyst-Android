@@ -83,10 +83,15 @@ void amethyst_write_crash_log(const char *text, size_t length) {
     write_log(text, length, ANDROID_LOG_ERROR);
 }
 
+static void write_game_line(const char *line, size_t length) {
+    // 콜백에 전달되는 버퍼의 length 위치에는 줄바꿈이 있다.
+    amethyst_write_log(line, length + 1);
+}
+
 static void emit_game_line(char *line, size_t length, bool oversized) {
     if (oversized) {
         static const char message[] = "[Amethyst] Game log line exceeded 64 KiB\n";
-        amethyst_write_log(message, sizeof(message) - 1);
+        output_handler(message, sizeof(message) - sizeof("\n"));
         return;
     }
 
@@ -96,14 +101,11 @@ static void emit_game_line(char *line, size_t length, bool oversized) {
         return;
     }
 
-    line[length] = '\n';
-    amethyst_write_log(line, length + 1);
-    if (output_handler != NULL) {
-        if (length > 0 && line[length - 1] == '\r') {
-            length--;
-        }
-        output_handler(line, length);
+    if (length > 0 && line[length - 1] == '\r') {
+        length--;
     }
+    line[length] = '\n';
+    output_handler(line, length);
 }
 
 static void *logger_thread(void *unused) {
@@ -186,7 +188,10 @@ static void restore_output_fd(int original_fd, int stream_fd) {
     }
 }
 
-int amethyst_begin_line_output(amethyst_output_handler handler) {
+int amethyst_begin_output_with_line_handler(amethyst_output_handler handler) {
+    if (handler == NULL) {
+        return EINVAL;
+    }
     if (output_started) {
         return EALREADY;
     }
@@ -303,7 +308,7 @@ JNIEXPORT void JNICALL
 Java_net_kdt_pojavlaunch_Logger_beginOutput(JNIEnv *env, jclass clazz) {
     (void)env;
     (void)clazz;
-    int result = amethyst_begin_line_output(NULL);
+    int result = amethyst_begin_output_with_line_handler(write_game_line);
     if (result != 0 && result != EALREADY) {
         __android_log_print(ANDROID_LOG_ERROR, "AmethystGame", "Redirect game output failed: %s", strerror(result));
     }
