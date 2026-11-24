@@ -69,6 +69,6 @@ JVM tests cover accepted cancellation before/during work, non-cancellable phases
 
 라이브러리가 전체 JVM 인자·사용자 JVM 옵션·환경값을 그대로 출력하던 경로는 제거했다. 상태/Java 실패 파일에도 해당 값을 넣지 않는다. 게임·모드 또는 JVM 자체가 생성하는 runtime.log/hs_err 내용까지 모두 정제됐다는 뜻은 아니다. 호스트는 진단 화면·Sentry·support bundle에 사용하기 전에 필요한 비밀값 제거를 적용해야 한다. 이 PR은 Sentry·업로드·실행 성공 metric이나 보관 정책을 라이브러리에 추가하지 않는다.
 
-일반 실행과 AuthYou 실행은 `RuntimeGameSession`에서 실행 디렉터리의 `runtime.log`를 먼저 연다. stdout·stderr는 Amethyst C가 직접 기록하며, AuthYou Go는 파이프 출력의 원본 바이트와 EOF를 받아 인증용 줄을 조립한다. Java 화면과 출력 기반 완화는 파일을 읽는다. AuthYou C·Go 오류는 같은 파일에 기록하며 파일에 쓸 수 없으면 logcat을 사용한다. Java 시작 오류는 호출 경로에 전파한 뒤 기존 실행 실패 진단으로 전달한다. 게임 출력은 세션 ID를 필터링한 뒤 기록하고, 64 KiB를 초과하는 단일 줄은 생략을 표시한다. AuthYou 네이티브 크래시 진단은 실행 로그에 기록되고 HotSpot 보고서는 실행 디렉터리의 `hs_err_pid<PID>.log`에 남는다.
+일반 실행과 AuthYou 실행은 `RuntimeGameSession`에서 실행 디렉터리의 `runtime.log`를 먼저 연다. stdout·stderr는 Amethyst C가 직접 기록하며, AuthYou Go는 파이프 출력의 원본 바이트와 EOF를 받아 인증용 줄을 조립한다. Java 화면과 출력 기반 완화는 파일을 읽는다. AuthYou C·Go 오류는 같은 파일에 기록하며 파일에 쓸 수 없으면 logcat을 사용한다. Java 시작 오류는 호출 경로에 전파한 뒤 기존 실행 실패 진단으로 전달한다. 64 KiB를 초과하는 단일 게임 출력 줄은 생략을 표시한다. AuthYou 네이티브 크래시 진단은 실행 로그에 기록되고 HotSpot 보고서는 실행 디렉터리의 `hs_err_pid<PID>.log`에 남는다.
 
 JVM 검증은 실제 파일의 독립 reader, 단계·중복/역행·첫 종료 보존, 형식 오류·파일 부재·게시 실패를 확인한다. Android 계측은 별도 `:game` 테스트 Service의 PID·파일·앱 내부 알림·Java 종료 진입점·정지 요청을 확인하며 실제 Minecraft나 JNI JVM을 실행하지 않는다. AAR 빌드와 이 계측만으로 실제 게임 로딩/종료, 전체 포팅 또는 LGPL 재결합 배포를 완료했다고 판단하지 않는다.

@@ -69,7 +69,7 @@ static void write_log(const char *text, size_t length, int priority) {
 }
 
 void amethyst_write_log(const char *text, size_t length) {
-    if (length == 0 || memmem(text, length, "Session ID is", sizeof("Session ID is") - 1) != NULL) {
+    if (length == 0) {
         return;
     }
 
@@ -136,7 +136,6 @@ static void *logger_thread(void *unused) {
             remaining -= (int)count;
         }
 
-        // 필터가 read() 경계에서 잘린 세션 ID도 확인할 수 있게 줄 단위로 기록한다.
         for (ssize_t index = 0; index < count; index++) {
             char byte = chunk[index];
             if (used < MAX_GAME_LOG_LINE_BYTES || (used == MAX_GAME_LOG_LINE_BYTES && byte == '\n')) {
