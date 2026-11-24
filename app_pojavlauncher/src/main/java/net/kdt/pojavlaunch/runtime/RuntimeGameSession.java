@@ -51,7 +51,6 @@ public final class RuntimeGameSession {
         try {
             authYouRequest = AuthYouLaunchRequest.readFrom(intent);
         } catch (IllegalArgumentException failure) {
-            Logger.appendToLog("Invalid AuthYou launch request: " + failure.getMessage());
             throw new IOException(failure.getMessage(), failure);
         }
         beginLogging(null);

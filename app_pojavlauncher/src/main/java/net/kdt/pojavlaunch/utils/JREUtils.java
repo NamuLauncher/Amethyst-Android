@@ -458,10 +458,9 @@ public class JREUtils {
             int changedDirectory,
             List<String> jvmArguments,
             AuthYouLaunchRequest request
-    ) {
+    ) throws IOException {
         if (changedDirectory == -1) {
-            AuthYouLauncher.logStartFailure("게임 작업 디렉터리를 바꾸지 못했습니다: " + gameDirectory.getAbsolutePath());
-            return AuthYouLauncher.START_FAILURE_EXIT_CODE;
+            throw new IOException("Failed to change the game working directory");
         }
 
         RuntimeGameSession.onGameLaunchStarted();

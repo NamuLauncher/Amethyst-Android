@@ -6,7 +6,6 @@ import androidx.annotation.Keep;
 
 import java.io.File;
 
-import net.kdt.pojavlaunch.Logger;
 import net.kdt.pojavlaunch.runtime.AuthYouLaunchRequest;
 
 /**
@@ -18,49 +17,30 @@ import net.kdt.pojavlaunch.runtime.AuthYouLaunchRequest;
  */
 @Keep
 public final class AuthYouLauncher {
-    /** 게임 시작 전 단계가 실패했을 때 일반 종료 코드로 기록하는 값. */
-    public static final int START_FAILURE_EXIT_CODE = 91;
-
     private static final String LAUNCHER_LIBRARY = "authyou_launcher";
 
     private AuthYouLauncher() {}
 
-    /** 게임 실행 결과 또는 시작 실패 코드 91을 반환한다. 치명 시그널이면 반환하지 않고 프로세스가 끝난다. */
+    /**
+     * 네이티브 실행 결과를 반환한다. Java 라이브러리 로드·연결 오류는 호출자에게 전파한다.
+     * 치명 시그널이면 반환하지 않고 프로세스가 끝난다.
+     */
     public static int launchGame(
             Context applicationContext,
             String[] jvmArguments,
             File baseDirectory,
             AuthYouLaunchRequest request
     ) {
-        try {
-            System.loadLibrary(LAUNCHER_LIBRARY);
-        } catch (UnsatisfiedLinkError failure) {
-            logStartFailure("AuthYou C 라이브러리(lib" + LAUNCHER_LIBRARY + ".so)를 열지 못했습니다", failure);
-            return START_FAILURE_EXIT_CODE;
-        }
-
-        try {
-            return nativeLaunchGame(
-                    applicationContext,
-                    jvmArguments,
-                    request.serverId,
-                    request.userId,
-                    request.host,
-                    baseDirectory.getAbsolutePath(),
-                    request.fileSetId
-            );
-        } catch (UnsatisfiedLinkError failure) {
-            logStartFailure("AuthYou C의 게임 실행 함수를 찾지 못했습니다", failure);
-            return START_FAILURE_EXIT_CODE;
-        }
-    }
-
-    public static void logStartFailure(String message, Throwable failure) {
-        Logger.appendToLog(message + ": " + failure);
-    }
-
-    public static void logStartFailure(String message) {
-        Logger.appendToLog(message);
+        System.loadLibrary(LAUNCHER_LIBRARY);
+        return nativeLaunchGame(
+                applicationContext,
+                jvmArguments,
+                request.serverId,
+                request.userId,
+                request.host,
+                baseDirectory.getAbsolutePath(),
+                request.fileSetId
+        );
     }
 
     private static native int nativeLaunchGame(
