@@ -584,7 +584,7 @@ public final class Tools {
         // If we returned, this means that the JVM exit dialog has been shown and we don't need to be active anymore.
         // We never return otherwise. The process will be killed anyway, and thus we will become inactive
     }
-    private static Logger.eventLogListener controllableMitigationLogListener;
+    private static Logger.LogLineListener controllableMitigationLogListener;
     /*
      * This is does not work when debugging. This is not reliable.
      * This is a monstrosity that races the mod, trying to ensure that when the folder is checked
@@ -609,6 +609,11 @@ public final class Tools {
             Tools.runOnUiThread(() -> {
                 Tools.dialog(activity, activity.getString(R.string.global_warning), activity.getString(R.string.controllableFound));
             });
+            if (Logger.file() == null) {
+                Log.w(TAG, "Skipping Controllable mitigation because the runtime log is unavailable");
+                return;
+            }
+
             Thread mitigationThread = new Thread(() -> {
                 // This is total garbage but it seems to be the best jank for the job
                 Log.i(TAG, "Controllable detected! Starting mitigation thread");
@@ -645,7 +650,7 @@ public final class Tools {
         }
     }
 
-    private static Logger.eventLogListener oldL4JMitigationLogListener;
+    private static Logger.LogLineListener oldL4JMitigationLogListener;
     /// TODO: Remove when the time is right
     /**
      * Legacy4J for a long time had broken SDL detection for android, we need to check and
@@ -1693,9 +1698,12 @@ public final class Tools {
         return runtime;
     }
 
-    /** Triggers the share intent chooser, with the latestlog file attached to it */
+    /** 현재 실행의 로그 파일을 공유한다. */
     public static void shareLog(Context context){
-        openPath(context, new File(Tools.DIR_GAME_HOME, "latestlog.txt"), true);
+        File log = Logger.file();
+        if (log != null) {
+            openPath(context, log, true);
+        }
     }
 
     /**

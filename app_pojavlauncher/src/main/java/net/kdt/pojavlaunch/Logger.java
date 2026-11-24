@@ -1,59 +1,133 @@
 package net.kdt.pojavlaunch;
 
+import android.util.Log;
+
 import androidx.annotation.Keep;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
-/** Singleton class made to log on one file
- * The singleton part can be removed but will require more implementation from the end-dev
- */
 @Keep
-public class Logger {
-    private static final CopyOnWriteArrayList<eventLogListener> logListeners = new CopyOnWriteArrayList<>();
+public final class Logger {
+    private static final String TAG = "AmethystGame";
+    private static final CopyOnWriteArrayList<LogLineListener> listeners = new CopyOnWriteArrayList<>();
+    private static final ScheduledExecutorService reader = Executors.newSingleThreadScheduledExecutor();
+    private static ScheduledFuture<?> readTask;
+    private static volatile File logFile;
 
-    /** Print the text to the log file if not censored */
-    public static native void appendToLog(String text);
+    static {
+        System.loadLibrary("pojavexec");
+    }
 
-    /** Reset the log file, effectively erasing any previous logs */
-    public static native void begin(String logFilePath);
+    private Logger() {}
 
-    /**
-     * 게임 출력 파이프를 닫는다. C 표준 입출력 버퍼를 비우고 stdout·stderr를 원래 대상으로 되돌린 뒤
-     * 로그 스레드가 남은 출력을 모두 기록하고 끝날 때까지 기다린다. 한 번만 동작한다.
-     */
+    public static void appendToLog(String text) {
+        appendUtf8((text + '\n').getBytes(StandardCharsets.UTF_8));
+    }
+
+    public static synchronized boolean open(File file) {
+        if (logFile != null) {
+            return logFile.equals(file);
+        }
+        if (!openLogFile(file.getAbsolutePath())) {
+            return false;
+        }
+        logFile = file;
+        startReading();
+        return true;
+    }
+
+    public static File file() {
+        return logFile;
+    }
+
+    public static native void beginOutput();
+
     public static native void endLogging();
 
-    /** Add a listener for the logfile, ask the native side for a listener if needed */
-    public static void addLogListener(eventLogListener logListeners) {
-        boolean wasEmpty = Logger.logListeners.isEmpty();
-        Logger.logListeners.add(logListeners);
-        if (wasEmpty) setLogListener(Logger::onEventLogged);
+    private static native boolean openLogFile(String path);
+
+    private static native void appendUtf8(byte[] text);
+
+    public static synchronized void addLogListener(LogLineListener listener) {
+        listeners.addIfAbsent(listener);
+        startReading();
     }
 
-    /** Remove a listener for the logfile, unset the native listener if no listeners left */
-    public static void removeLogListener(eventLogListener logListener) {
-        Logger.logListeners.remove(logListener);
-        if (Logger.logListeners.isEmpty()){
-            // Makes the JNI code be able to skip expensive logger callbacks
-            // NOTE: was tested by rapidly smashing the log on/off button, no sync issues found :)
-            setLogListener(null);
+    public static synchronized void removeLogListener(LogLineListener listener) {
+        listeners.remove(listener);
+        if (listeners.isEmpty() && readTask != null) {
+            readTask.cancel(false);
+            readTask = null;
         }
     }
 
-    private static void onEventLogged(String text) {
-        for (eventLogListener logListener: Logger.logListeners) {
-            logListener.onEventLogged(text);
+    private static void startReading() {
+        File file = logFile;
+        if (file == null || listeners.isEmpty() || readTask != null) {
+            return;
+        }
+        FileTail tail = new FileTail(file);
+        readTask = reader.scheduleWithFixedDelay(tail::read, 0, 50, TimeUnit.MILLISECONDS);
+    }
+
+    public interface LogLineListener {
+        void onLine(String text);
+    }
+
+    private static final class FileTail {
+        private final File file;
+        private final byte[] chunk = new byte[8192];
+        private final ByteArrayOutputStream line = new ByteArrayOutputStream();
+        private long offset;
+
+        FileTail(File file) {
+            this.file = file;
+            offset = file.length();
+        }
+
+        void read() {
+            try (RandomAccessFile input = new RandomAccessFile(file, "r")) {
+                input.seek(offset);
+                long remaining = input.length() - offset;
+                while (remaining > 0) {
+                    int count = input.read(chunk, 0, (int)Math.min(remaining, chunk.length));
+                    if (count <= 0) {
+                        break;
+                    }
+                    offset += count;
+                    remaining -= count;
+                    for (int index = 0; index < count; index++) {
+                        if (chunk[index] == '\n') {
+                            dispatchLine();
+                        } else {
+                            line.write(chunk[index]);
+                        }
+                    }
+                }
+            } catch (IOException failure) {
+                Log.w(TAG, "Read runtime log failed", failure);
+            }
+        }
+
+        private void dispatchLine() {
+            String text = new String(line.toByteArray(), StandardCharsets.UTF_8);
+            line.reset();
+            for (LogLineListener listener : listeners) {
+                try {
+                    listener.onLine(text);
+                } catch (RuntimeException failure) {
+                    Log.e(TAG, "Handle runtime log failed", failure);
+                }
+            }
         }
     }
-
-    /** Small listener for anything listening to the log
-     *  Performs double duty as being the interface for java listeners and the native callback
-     */
-    @Keep
-    public interface eventLogListener {
-        void onEventLogged(String text);
-    }
-
-    /** Link a log listener to the logger */
-    private static native void setLogListener(eventLogListener logListener);
 }

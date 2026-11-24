@@ -80,14 +80,8 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_java_gui_launcher);
 
-        try {
-            File latestLogFile = new File(Tools.DIR_GAME_HOME, "latestlog.txt");
-            if (!latestLogFile.exists() && !latestLogFile.createNewFile())
-                throw new IOException("Failed to create a new log file");
-            Logger.begin(latestLogFile.getAbsolutePath());
-        }catch (IOException e) {
-            Tools.showError(this, e, true);
-        }
+        Logger.open(new File(Tools.DIR_GAME_HOME, "latestlog.txt"));
+        Logger.beginOutput();
         MainActivity.GLOBAL_CLIPBOARD = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
         mTouchCharInput = findViewById(R.id.awt_touch_char);
         mTouchCharInput.setCharacterSender(new AwtCharSender());
