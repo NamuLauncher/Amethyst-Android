@@ -21,7 +21,7 @@ import net.kdt.pojavlaunch.utils.RuntimeTheme;
  * It has support for the Logger class
  */
 public class LoggerView extends ConstraintLayout {
-    private Logger.eventLogListener mLogListener;
+    private Logger.LogLineListener mLogListener;
     private ToggleButton mLogToggle;
     private DefocusableScrollView mScrollView;
     private TextView mLogTextView;
@@ -92,6 +92,7 @@ public class LoggerView extends ConstraintLayout {
         mLogListener = text -> {
             if(mLogTextView.getVisibility() != VISIBLE) return;
             post(() -> {
+                if (mLogTextView.getVisibility() != VISIBLE) return;
                 mLogTextView.append(text + '\n');
                 if(mScrollView.isKeepFocusing()) mScrollView.fullScroll(View.FOCUS_DOWN);
             });

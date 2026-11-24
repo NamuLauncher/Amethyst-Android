@@ -1,7 +1,6 @@
 package net.kdt.pojavlaunch.authyou;
 
 import android.content.Context;
-import android.util.Log;
 
 import androidx.annotation.Keep;
 
@@ -22,10 +21,7 @@ public final class AuthYouLauncher {
     /** 게임 시작 전 단계가 실패했을 때 일반 종료 코드로 기록하는 값. */
     public static final int START_FAILURE_EXIT_CODE = 91;
 
-    private static final String TAG = "AuthYou";
     private static final String LAUNCHER_LIBRARY = "authyou_launcher";
-
-    private static AuthYouLogFile logFileListener;
 
     private AuthYouLauncher() {}
 
@@ -59,22 +55,12 @@ public final class AuthYouLauncher {
         }
     }
 
-    /** latest.log를 비우고 열어 onEventLogged 리스너로 등록한다. 게임 프로세스에서 한 번만 호출한다. */
-    public static void startLogFile(File logFile) {
-        if (logFileListener != null) {
-            return;
-        }
-        logFileListener = AuthYouLogFile.open(logFile);
-        Logger.addLogListener(logFileListener);
-    }
-
-    /** 게임 시작 중 실패는 logcat에만 남긴다. latest.log에는 실행 중 로그만 기록한다. */
     public static void logStartFailure(String message, Throwable failure) {
-        Log.e(TAG, message, failure);
+        Logger.appendToLog(message + ": " + failure);
     }
 
     public static void logStartFailure(String message) {
-        Log.e(TAG, message);
+        Logger.appendToLog(message);
     }
 
     private static native int nativeLaunchGame(

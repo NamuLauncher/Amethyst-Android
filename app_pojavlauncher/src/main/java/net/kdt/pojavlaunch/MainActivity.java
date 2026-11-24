@@ -130,7 +130,9 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         super.onCreate(savedInstanceState);
         try {
             RuntimeGameSession.initialize(this);
+            RuntimeGameSession.beginLogging(new File(Tools.DIR_GAME_HOME, "latestlog.txt"));
         } catch (IOException failure) {
+            Log.e("AmethystGame", "Initialize game run failed", failure);
             if (RuntimeGameSession.onFailure(failure)) {
                 Tools.fullyExit();
             } else {
@@ -238,8 +240,6 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
 
         try {
-            File latestLogFile = new File(Tools.DIR_GAME_HOME, "latestlog.txt");
-            RuntimeGameSession.beginLogging(latestLogFile);
             // FIXME: is it safe for multi thread?
             GLOBAL_CLIPBOARD = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             touchCharInput.setCharacterSender(new LwjglCharSender());

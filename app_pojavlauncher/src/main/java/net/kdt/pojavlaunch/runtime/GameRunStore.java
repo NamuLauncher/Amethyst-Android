@@ -13,7 +13,6 @@ import java.util.Properties;
 
 /** 한 게임 프로세스가 기록하고 다른 프로세스가 읽는 실행별 파일 저장소. */
 final class GameRunStore {
-    static final String AUTHYOU_LOG_FILE_NAME = "latest.log";
 
     private final File directory;
     private final Path stateFile;
@@ -54,10 +53,6 @@ final class GameRunStore {
 
     File errorFilePattern() {
         return new File(directory, "hs_err_pid%p.log");
-    }
-
-    File authYouLogFile() {
-        return new File(directory, AUTHYOU_LOG_FILE_NAME);
     }
 
     File failureFile() {

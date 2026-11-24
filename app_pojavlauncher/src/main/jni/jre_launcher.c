@@ -35,6 +35,7 @@
 
 #include "log.h"
 #include "utils.h"
+#include "stdio_is.h"
 #include "environ/environ.h"
 
 // Uncomment to try redirect signal handling to JVM
@@ -130,7 +131,9 @@ static JLI_Launch_func* find_jli_launch(void) {
    // Boardwalk: silence
    // LOGD("JLI lib = %x", (int)libjli);
    if (NULL == libjli) {
-       LOGE("JLI lib = NULL: %s", dlerror());
+       char message[2048];
+       snprintf(message, sizeof(message), "Failed to load libjli.so: %s\n", dlerror());
+       amethyst_write_log(message, strlen(message));
        return NULL;
    }
    LOGD("Found JLI lib");
@@ -141,7 +144,8 @@ static JLI_Launch_func* find_jli_launch(void) {
     // LOGD("JLI_Launch = 0x%x", *(int*)&pJLI_Launch);
 
    if (NULL == pJLI_Launch) {
-       LOGE("JLI_Launch = NULL");
+       static const char message[] = "JLI_Launch symbol not found\n";
+       amethyst_write_log(message, sizeof(message) - 1);
        return NULL;
    }
 

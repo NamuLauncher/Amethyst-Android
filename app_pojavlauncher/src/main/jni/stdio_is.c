@@ -1,15 +1,21 @@
+#define _GNU_SOURCE
+
 #include <jni.h>
 #include <sys/types.h>
+#include <sys/eventfd.h>
+#include <sys/ioctl.h>
 #include <stdbool.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <poll.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <fcntl.h>
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <stdatomic.h>
-#include <environ/environ.h>
+#include <android/log.h>
 
 #include "stdio_is.h"
 
@@ -26,89 +32,138 @@ static JavaVM *exitTrap_jvm;
 // 로그 스레드가 읽은 바이트를 넘길 처리 함수만 다르다.
 static int pfd[2] = {-1, -1};
 static int original_output_fds[2] = {-1, -1};
+static int drain_fd = -1;
 static pthread_t logger;
 static _Atomic bool logger_running = false;
 static amethyst_output_handler output_handler;
-static bool output_started = false;
-static bool output_ended = false;
+static _Atomic bool output_started = false;
+static _Atomic bool output_ended = false;
 
-static jmethodID logger_onEventLogged;
-static volatile jobject logListener = NULL;
-static int latestlog_fd = -1;
+static _Atomic int log_fd = -1;
+static pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 
-#define LOG_READ_BUFFER_SIZE 2049
+#define LOG_READ_BUFFER_SIZE 2048
+#define MAX_GAME_LOG_LINE_BYTES (64 * 1024)
 
-// 기존 Amethyst 로그 필터. buf는 NUL로 끝나야 한다.
-static bool passes_log_filter(const char* buf) {
-    return strstr(buf, "Session ID is") == NULL;
-}
-
-static bool recordBuffer(char* buf, ssize_t len) {
-    if(!passes_log_filter(buf)) return false;
-    if(latestlog_fd != -1) {
-        write(latestlog_fd, buf, len);
-        fdatasync(latestlog_fd);
-    }
-    return true;
-}
-
-static void call_log_listener(JNIEnv* env, const char* text) {
-    jobject listener = logListener;
-    if(listener == NULL) {
-        return;
-    }
-
-    jstring writeString = (*env)->NewStringUTF(env, text);
-    if(writeString == NULL) {
-        (*env)->ExceptionClear(env);
-        return;
-    }
-
-    (*env)->CallVoidMethod(env, listener, logger_onEventLogged, writeString);
-    if((*env)->ExceptionCheck(env)) {
-        (*env)->ExceptionClear(env);
-    }
-    (*env)->DeleteLocalRef(env, writeString);
-}
-
-// 기본 실행 경로의 처리 함수. 필터를 적용해 로그 파일에 기록하고 리스너에 전달한다.
-static void record_game_output(const char* data, size_t length) {
-    char buf[LOG_READ_BUFFER_SIZE];
-    if(length > sizeof(buf) - 1) {
-        length = sizeof(buf) - 1;
-    }
-    memcpy(buf, data, length);
-    buf[length] = 0x00;
-
-    bool shouldRecordString = recordBuffer(buf, (ssize_t) length); //record with newline int latestlog
-    if(length > 0 && buf[length-1]=='\n') {
-        buf[length-1]=0x00; //truncate
-    }
-    if(shouldRecordString) {
-        amethyst_log_event(buf, strlen(buf)); //send to app without newline
-    }
-}
-
-static void *logger_thread() {
-    JNIEnv *env;
-    JavaVM* dvm = pojav_environ->dalvikJavaVMPtr;
-    (*dvm)->AttachCurrentThread(dvm, &env, NULL);
-    ssize_t  rsize;
-    char buf[LOG_READ_BUFFER_SIZE - 1];
-    // 쓰기 끝이 모두 닫히면 남은 바이트를 넘긴 뒤 EOF(0)를 받는다.
-    for(;;) {
-        rsize = read(pfd[0], buf, sizeof(buf));
-        if(rsize < 0 && errno == EINTR) {
+static void write_log(const char *text, size_t length, int priority) {
+    int fd = atomic_load(&log_fd);
+    while (fd >= 0 && length > 0) {
+        ssize_t written = write(fd, text, length);
+        if (written < 0 && errno == EINTR) {
             continue;
         }
-        if(rsize <= 0) {
+        if (written <= 0) {
             break;
         }
-        output_handler(buf, (size_t) rsize);
+        text += written;
+        length -= (size_t)written;
+    }
+
+    // logcat 한 건의 크기 제한 안에서 남은 오류나 출력을 기록한다.
+    while (length > 0) {
+        size_t count = length > LOG_READ_BUFFER_SIZE ? LOG_READ_BUFFER_SIZE : length;
+        __android_log_print(priority, "AmethystGame", "%.*s", (int)count, text);
+        text += count;
+        length -= count;
+    }
+}
+
+void amethyst_write_log(const char *text, size_t length) {
+    if (length == 0 || memmem(text, length, "Session ID is", sizeof("Session ID is") - 1) != NULL) {
+        return;
+    }
+
+    pthread_mutex_lock(&log_lock);
+    write_log(text, length, ANDROID_LOG_INFO);
+    pthread_mutex_unlock(&log_lock);
+}
+
+void amethyst_write_crash_log(const char *text, size_t length) {
+    // 크래시 난 스레드가 log_lock을 잡고 있어도 기록할 수 있어야 한다.
+    write_log(text, length, ANDROID_LOG_ERROR);
+}
+
+static void record_game_line(const char *line, size_t length, bool oversized) {
+    if (oversized) {
+        static const char message[] = "[Amethyst] Game log line exceeded 64 KiB\n";
+        amethyst_write_log(message, sizeof(message) - 1);
+    } else {
+        amethyst_write_log(line, length);
+    }
+}
+
+static void *logger_thread(void *unused) {
+    (void)unused;
+    char chunk[LOG_READ_BUFFER_SIZE];
+    char line[MAX_GAME_LOG_LINE_BYTES + 1];
+    size_t used = 0;
+    bool oversized = false;
+
+    struct pollfd fds[] = {
+        {.fd = pfd[0], .events = POLLIN},
+        {.fd = drain_fd, .events = POLLIN},
+    };
+    int remaining = -1;
+    while (remaining != 0) {
+        if (remaining < 0) {
+            int ready = poll(fds, 2, -1);
+            if (ready < 0 && errno == EINTR) {
+                continue;
+            }
+            if (ready < 0) {
+                break;
+            }
+            if (fds[1].revents & POLLIN) {
+                // 자식 프로세스가 상속한 stdout을 열고 있어도 종료 시점에 남은 출력만 비운다.
+                if (ioctl(pfd[0], FIONREAD, &remaining) < 0 || remaining == 0) {
+                    break;
+                }
+            }
+        }
+
+        size_t limit = sizeof(chunk);
+        if (remaining > 0 && (size_t)remaining < limit) {
+            limit = (size_t)remaining;
+        }
+        ssize_t count = read(pfd[0], chunk, limit);
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        if (count <= 0) {
+            break;
+        }
+        if (remaining > 0) {
+            remaining -= (int)count;
+        }
+
+        // 필터가 read() 경계에서 잘린 세션 ID도 확인할 수 있게 줄 단위로 기록한다.
+        for (ssize_t index = 0; index < count; index++) {
+            char byte = chunk[index];
+            if (used < MAX_GAME_LOG_LINE_BYTES || (used == MAX_GAME_LOG_LINE_BYTES && byte == '\n')) {
+                line[used++] = byte;
+            } else {
+                oversized = true;
+            }
+            if (byte == '\n') {
+                record_game_line(line, used, oversized);
+                used = 0;
+                oversized = false;
+            }
+        }
+        if (output_handler != NULL) {
+            output_handler(chunk, (size_t)count);
+        }
+    }
+
+    if (used > 0) {
+        line[used++] = '\n';
+        record_game_line(line, used, oversized);
+    }
+    if (output_handler != NULL) {
+        output_handler(NULL, 0);
     }
     close(pfd[0]);
     pfd[0] = -1;
-    (*dvm)->DetachCurrentThread(dvm);
     return NULL;
 }
 
@@ -127,22 +182,31 @@ int amethyst_begin_output(amethyst_output_handler handler) {
     setvbuf(stdout, 0, _IOLBF, 0); // make stdout line-buffered
     setvbuf(stderr, 0, _IONBF, 0); // make stderr unbuffered
 
-    if(pipe(pfd) != 0) {
+    if(pipe2(pfd, O_CLOEXEC) != 0) {
         int error = errno;
         pfd[0] = -1;
         pfd[1] = -1;
         return error;
     }
 
+    drain_fd = eventfd(0, EFD_CLOEXEC);
+    if (drain_fd < 0) {
+        int error = errno;
+        close_if_open(&pfd[0]);
+        close_if_open(&pfd[1]);
+        return error;
+    }
+
     // endLogging()에서 FD 1·2를 원래 대상으로 되돌리기 위해 보관한다.
-    original_output_fds[0] = dup(1);
-    original_output_fds[1] = dup(2);
+    original_output_fds[0] = fcntl(STDOUT_FILENO, F_DUPFD_CLOEXEC, 0);
+    original_output_fds[1] = fcntl(STDERR_FILENO, F_DUPFD_CLOEXEC, 0);
     if(original_output_fds[0] == -1 || original_output_fds[1] == -1) {
         int error = errno;
         close_if_open(&original_output_fds[0]);
         close_if_open(&original_output_fds[1]);
         close_if_open(&pfd[0]);
         close_if_open(&pfd[1]);
+        close_if_open(&drain_fd);
         return error;
     }
 
@@ -159,6 +223,7 @@ int amethyst_begin_output(amethyst_output_handler handler) {
         close_if_open(&original_output_fds[1]);
         close_if_open(&pfd[0]);
         close_if_open(&pfd[1]);
+        close_if_open(&drain_fd);
         return result;
     }
 
@@ -168,10 +233,9 @@ int amethyst_begin_output(amethyst_output_handler handler) {
 }
 
 void amethyst_end_logging(void) {
-    if(!output_started || output_ended) {
+    if (!output_started || atomic_exchange(&output_ended, true)) {
         return;
     }
-    output_ended = true;
 
     // 로그 스레드가 읽는 동안 C 표준 입출력 버퍼에 남은 바이트를 파이프에 쓴다.
     fflush(stdout);
@@ -182,105 +246,57 @@ void amethyst_end_logging(void) {
     close_if_open(&original_output_fds[0]);
     close_if_open(&original_output_fds[1]);
 
-    // 마지막 쓰기 끝을 닫으면 로그 스레드가 남은 출력을 처리하고 EOF로 끝난다.
     close_if_open(&pfd[1]);
+    uint64_t wake = 1;
+    while (write(drain_fd, &wake, sizeof(wake)) < 0 && errno == EINTR) {
+    }
     pthread_join(logger, NULL);
+    close_if_open(&drain_fd);
     logger_running = false;
 }
 
-void amethyst_flush_output_for_exit(void) {
-    int fd = pfd[1];
-    if(fd == -1 || !logger_running || pthread_equal(pthread_self(), logger)) {
-        return;
+void amethyst_finish_output_on_exit(void) {
+    if (logger_running && !pthread_equal(pthread_self(), logger)) {
+        amethyst_end_logging();
     }
-
-    fflush(stdout);
-    fflush(stderr);
-
-    // 줄바꿈 없이 끝난 마지막 줄을 출력 처리 함수가 줄로 완성할 수 있게 한다.
-    ssize_t written;
-    do {
-        written = write(fd, "\n", 1);
-    } while(written < 0 && errno == EINTR);
-
-    sleep(1);
 }
 
-void amethyst_log_event(const char* text, size_t length) {
-    if(logListener == NULL) {
-        return;
+JNIEXPORT jboolean JNICALL
+Java_net_kdt_pojavlaunch_Logger_openLogFile(JNIEnv *env, jclass clazz, jstring path) {
+    (void)clazz;
+    if (atomic_load(&log_fd) >= 0) {
+        return JNI_TRUE;
     }
-
-    JavaVM* dvm = pojav_environ->dalvikJavaVMPtr;
-    JNIEnv* env;
-    bool attached = false;
-    jint result = (*dvm)->GetEnv(dvm, (void**) &env, JNI_VERSION_1_6);
-    if(result == JNI_EDETACHED) {
-        if((*dvm)->AttachCurrentThread(dvm, &env, NULL) != JNI_OK) {
-            return;
-        }
-        // AuthYou Go의 스레드처럼 ART에 등록되지 않은 스레드는 호출 뒤 바로 해제한다.
-        attached = true;
-    } else if(result != JNI_OK) {
-        return;
+    const char *file = (*env)->GetStringUTFChars(env, path, NULL);
+    if (file == NULL) {
+        return JNI_FALSE;
     }
-
-    char* buf = malloc(length + 1);
-    if(buf != NULL) {
-        if(length > 0) {
-            memcpy(buf, text, length);
-        }
-        buf[length] = 0x00;
-        // AuthYou Go가 넘기는 게임 출력에도 기존 Amethyst 로그 필터를 적용한다.
-        if(passes_log_filter(buf)) {
-            call_log_listener(env, buf);
-        }
-        free(buf);
+    // AuthYou 크래시 가드가 종료 직전까지 쓸 수 있게 FD는 프로세스 수명 동안 보관한다.
+    int fd = open(file, O_WRONLY | O_CREAT | O_APPEND | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0600);
+    int error = errno;
+    (*env)->ReleaseStringUTFChars(env, path, file);
+    if (fd < 0) {
+        __android_log_print(ANDROID_LOG_ERROR, "AmethystGame", "Open runtime log failed: %s", strerror(error));
+        return JNI_FALSE;
     }
+    atomic_store(&log_fd, fd);
+    return JNI_TRUE;
+}
 
-    if(attached) {
-        (*dvm)->DetachCurrentThread(dvm);
+JNIEXPORT void JNICALL
+Java_net_kdt_pojavlaunch_Logger_beginOutput(JNIEnv *env, jclass clazz) {
+    (void)env;
+    (void)clazz;
+    int result = amethyst_begin_output(NULL);
+    if (result != 0 && result != EALREADY) {
+        __android_log_print(ANDROID_LOG_ERROR, "AmethystGame", "Redirect game output failed: %s", strerror(result));
     }
 }
 
 JNIEXPORT void JNICALL
-Java_net_kdt_pojavlaunch_Logger_begin(JNIEnv *env, __attribute((unused)) jclass clazz, jstring logPath) {
-    if(latestlog_fd != -1) {
-        int localfd = latestlog_fd;
-        latestlog_fd = -1;
-        close(localfd);
-    }
-    if(logger_onEventLogged == NULL) {
-        jclass eventLogListener = (*env)->FindClass(env, "net/kdt/pojavlaunch/Logger$eventLogListener");
-        logger_onEventLogged = (*env)->GetMethodID(env, eventLogListener, "onEventLogged", "(Ljava/lang/String;)V");
-    }
-    jclass ioeClass = (*env)->FindClass(env, "java/io/IOException");
-
-    /* open latestlog.txt for writing */
-    const char* logFilePath = (*env)->GetStringUTFChars(env, logPath, NULL);
-    latestlog_fd = open(logFilePath, O_WRONLY | O_TRUNC);
-    (*env)->ReleaseStringUTFChars(env, logPath, logFilePath);
-    if(latestlog_fd == -1) {
-        (*env)->ThrowNew(env, ioeClass, strerror(errno));
-        return;
-    }
-
-    // 같은 프로세스에서 다시 호출되면 로그 파일만 바꾸고 출력 파이프는 그대로 쓴다.
-    if(output_started && output_handler == record_game_output) {
-        return;
-    }
-
-    /* create the pipe, redirect stdout and stderr and spawn the logging thread */
-    int result = amethyst_begin_output(record_game_output);
-    if(result != 0) {
-        close(latestlog_fd);
-        latestlog_fd = -1;
-        (*env)->ThrowNew(env, ioeClass, strerror(result));
-    }
-}
-
-JNIEXPORT void JNICALL
-Java_net_kdt_pojavlaunch_Logger_endLogging(__attribute((unused)) JNIEnv *env, __attribute((unused)) jclass clazz) {
+Java_net_kdt_pojavlaunch_Logger_endLogging(JNIEnv *env, jclass clazz) {
+    (void)env;
+    (void)clazz;
     amethyst_end_logging();
 }
 
@@ -325,33 +341,16 @@ _Noreturn void nominal_exit(int code, bool is_signal) {
     while(1) {}
 }
 
-JNIEXPORT void JNICALL Java_net_kdt_pojavlaunch_Logger_appendToLog(JNIEnv *env, __attribute((unused)) jclass clazz, jstring text) {
-    jsize appendStringLength = (*env)->GetStringUTFLength(env, text);
-    char newChars[appendStringLength+2];
-    (*env)->GetStringUTFRegion(env, text, 0, (*env)->GetStringLength(env, text), newChars);
-    newChars[appendStringLength] = '\n';
-    newChars[appendStringLength+1] = 0;
-    if(recordBuffer(newChars, appendStringLength+1) && logListener != NULL) {
-        (*env)->CallVoidMethod(env, logListener, logger_onEventLogged, text);
-    }
-}
-
 JNIEXPORT void JNICALL
-Java_net_kdt_pojavlaunch_Logger_setLogListener(JNIEnv *env, __attribute((unused)) jclass clazz, jobject log_listener) {
-    // AuthYou 실행 경로는 Logger.begin()을 호출하지 않으므로 리스너를 등록할 때 메서드를 찾는다.
-    if(logger_onEventLogged == NULL) {
-        jclass eventLogListener = (*env)->FindClass(env, "net/kdt/pojavlaunch/Logger$eventLogListener");
-        logger_onEventLogged = (*env)->GetMethodID(env, eventLogListener, "onEventLogged", "(Ljava/lang/String;)V");
+Java_net_kdt_pojavlaunch_Logger_appendUtf8(JNIEnv *env, jclass clazz, jbyteArray text) {
+    (void)clazz;
+    jsize length = (*env)->GetArrayLength(env, text);
+    jbyte *bytes = (*env)->GetByteArrayElements(env, text, NULL);
+    if (bytes != NULL) {
+        amethyst_write_log((const char *)bytes, (size_t)length);
+        (*env)->ReleaseByteArrayElements(env, text, bytes, JNI_ABORT);
     }
-    jobject logListenerLocal = logListener;
-    if(log_listener == NULL) {
-        logListener = NULL;
-    }else{
-        logListener = (*env)->NewGlobalRef(env, log_listener);
-    }
-    if(logListenerLocal != NULL) (*env)->DeleteGlobalRef(env, logListenerLocal);
 }
-
 
 JNIEXPORT void JNICALL
 Java_net_kdt_pojavlaunch_utils_JREUtils_setupExitMethod(JNIEnv *env, jclass clazz,

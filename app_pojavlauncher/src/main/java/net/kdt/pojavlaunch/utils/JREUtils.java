@@ -433,12 +433,12 @@ public class JREUtils {
             RuntimeGameSession.onGameLaunchStarted();
             exitCode = VMLauncher.launchJVM(userArgs.toArray(new String[0]));
         }
-        boolean handledByHost = RuntimeGameSession.onExit(exitCode, false);
-        Logger.appendToLog("Java Exit code: " + exitCode);
         if (authYou == null) {
             // AuthYou 실행 경로에서는 AuthYou Go가 게임 실행 함수 반환 직후 endLogging()을 호출한다.
             Logger.endLogging();
         }
+        Logger.appendToLog("Java Exit code: " + exitCode);
+        boolean handledByHost = RuntimeGameSession.onExit(exitCode, false);
         if (!handledByHost && exitCode != 0) {
             LifecycleAwareAlertDialog.DialogCreator dialogCreator = (dialog, builder)->
                     builder.setMessage(activity.getString(R.string.mcn_exit_title, exitCode))
@@ -459,10 +459,6 @@ public class JREUtils {
             List<String> jvmArguments,
             AuthYouLaunchRequest request
     ) {
-        // AuthYou Go의 실행 중 로그와 게임 출력은 onEventLogged로만 전달되므로 latest.log 리스너를 먼저 등록한다.
-        // 시작 중 실패는 각 주체가 logcat에만 남긴다.
-        AuthYouLauncher.startLogFile(RuntimeGameSession.authYouLogFile(new File(Tools.DIR_GAME_HOME)));
-
         if (changedDirectory == -1) {
             AuthYouLauncher.logStartFailure("게임 작업 디렉터리를 바꾸지 못했습니다: " + gameDirectory.getAbsolutePath());
             return AuthYouLauncher.START_FAILURE_EXIT_CODE;
