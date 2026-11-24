@@ -30,6 +30,8 @@ static void custom_atexit() {
         return;
     }
     exit_tripped = true;
+    // 줄바꿈 없이 남은 마지막 게임 출력이 출력 처리 함수에 전달될 시간을 준다.
+    amethyst_flush_output_for_exit();
     nominal_exit(exit_code, false);
 }
 

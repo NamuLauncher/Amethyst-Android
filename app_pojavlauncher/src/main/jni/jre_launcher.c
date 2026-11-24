@@ -121,9 +121,54 @@ static void abort_waiter_setup() {
     }
 }
 
-static jint launchJVM(int margc, char** margv) {
+// AuthYou 실행 경로에서 libjli.so 로드나 JLI_Launch 조회에 실패했을 때의 시작 실패 코드.
+#define AMETHYST_LAUNCH_FAILURE_EXIT_CODE 91
+
+static JLI_Launch_func* find_jli_launch(void) {
    void* libjli = dlopen("libjli.so", RTLD_LAZY | RTLD_GLOBAL);
 
+   // Boardwalk: silence
+   // LOGD("JLI lib = %x", (int)libjli);
+   if (NULL == libjli) {
+       LOGE("JLI lib = NULL: %s", dlerror());
+       return NULL;
+   }
+   LOGD("Found JLI lib");
+
+   JLI_Launch_func *pJLI_Launch =
+          (JLI_Launch_func *)dlsym(libjli, "JLI_Launch");
+    // Boardwalk: silence
+    // LOGD("JLI_Launch = 0x%x", *(int*)&pJLI_Launch);
+
+   if (NULL == pJLI_Launch) {
+       LOGE("JLI_Launch = NULL");
+       return NULL;
+   }
+
+   return pJLI_Launch;
+}
+
+static jint call_jli_launch(JLI_Launch_func* pJLI_Launch, int margc, char** margv) {
+   LOGD("Calling JLI_Launch");
+
+   return pJLI_Launch(margc, margv,
+                   0, NULL, // sizeof(const_jargs) / sizeof(char *), const_jargs,
+                   0, NULL, // sizeof(const_appclasspath) / sizeof(char *), const_appclasspath,
+                   FULL_VERSION,
+                   DOT_VERSION,
+                   *margv, // (const_progname != NULL) ? const_progname : *margv,
+                   *margv, // (const_launcher != NULL) ? const_launcher : *margv,
+                   (const_jargs != NULL) ? JNI_TRUE : JNI_FALSE,
+                   const_cpwildcard, const_javaw, const_ergo_class);
+/*
+   return pJLI_Launch(argc, argv,
+       0, NULL, 0, NULL, FULL_VERSION,
+       DOT_VERSION, *margv, *margv, // "java", "openjdk",
+       JNI_FALSE, JNI_TRUE, JNI_FALSE, 0);
+*/
+}
+
+static jint launchJVM(int margc, char** margv) {
    // Unset all signal handlers to create a good slate for JVM signal detection.
    struct sigaction clean_sa;
    memset(&clean_sa, 0, sizeof (struct sigaction));
@@ -139,41 +184,29 @@ static jint launchJVM(int margc, char** margv) {
    // Set up the thread that will abort the launcher with an user-facing dialog on a signal.
    abort_waiter_setup();
 
-   // Boardwalk: silence
-   // LOGD("JLI lib = %x", (int)libjli);
-   if (NULL == libjli) {
-       LOGE("JLI lib = NULL: %s", dlerror());
-       return -1;
-   }
-   LOGD("Found JLI lib");
-
-   JLI_Launch_func *pJLI_Launch =
-          (JLI_Launch_func *)dlsym(libjli, "JLI_Launch");
-    // Boardwalk: silence
-    // LOGD("JLI_Launch = 0x%x", *(int*)&pJLI_Launch);
-
+   JLI_Launch_func *pJLI_Launch = find_jli_launch();
    if (NULL == pJLI_Launch) {
-       LOGE("JLI_Launch = NULL");
        return -1;
    }
 
-   LOGD("Calling JLI_Launch");
+   return call_jli_launch(pJLI_Launch, margc, margv);
+}
 
-   return pJLI_Launch(margc, margv,
-                   0, NULL, // sizeof(const_jargs) / sizeof(char *), const_jargs,
-                   0, NULL, // sizeof(const_appclasspath) / sizeof(char *), const_appclasspath,
-                   FULL_VERSION,
-                   DOT_VERSION,
-                   *margv, // (const_progname != NULL) ? const_progname : *margv,
-                   *margv, // (const_launcher != NULL) ? const_launcher : *margv,
-                   (const_jargs != NULL) ? JNI_TRUE : JNI_FALSE,
-                   const_cpwildcard, const_javaw, const_ergo_class);
 /*
-   return pJLI_Launch(argc, argv, 
-       0, NULL, 0, NULL, FULL_VERSION,
-       DOT_VERSION, *margv, *margv, // "java", "openjdk",
-       JNI_FALSE, JNI_TRUE, JNI_FALSE, 0);
-*/
+ * AuthYou 실행 경로의 공개 래퍼. AuthYou Go가 cgo로 동기 호출한다.
+ *
+ * 시그널 일괄 초기화와 abort_waiter_setup()을 하지 않는다. HotSpot 시작 전에 설치된
+ * AuthYou Go의 동기 시그널 핸들러와 AuthYou C의 SIGSEGV·SIGABRT 핸들러를 보존해야
+ * HotSpot → AuthYou Go → AuthYou C 순서로 시그널이 전달된다.
+ */
+__attribute__((visibility("default")))
+int amethyst_launch_jvm(int argc, char **argv) {
+   JLI_Launch_func *pJLI_Launch = find_jli_launch();
+   if (NULL == pJLI_Launch) {
+       return AMETHYST_LAUNCH_FAILURE_EXIT_CODE;
+   }
+
+   return call_jli_launch(pJLI_Launch, argc, argv);
 }
 
 /*

@@ -13,6 +13,8 @@ import java.util.Properties;
 
 /** 한 게임 프로세스가 기록하고 다른 프로세스가 읽는 실행별 파일 저장소. */
 final class GameRunStore {
+    static final String AUTHYOU_LOG_FILE_NAME = "latest.log";
+
     private final File directory;
     private final Path stateFile;
 
@@ -54,6 +56,10 @@ final class GameRunStore {
         return new File(directory, "hs_err_pid%p.log");
     }
 
+    File authYouLogFile() {
+        return new File(directory, AUTHYOU_LOG_FILE_NAME);
+    }
+
     File failureFile() {
         return new File(directory, "failure.log");
     }
@@ -70,7 +76,7 @@ final class GameRunStore {
             }
             return new GameRunSnapshot(
                     required(values, "runId"),
-                    GameRunSnapshot.Stage.valueOf(required(values, "stage")),
+                    parseStage(required(values, "stage")),
                     Long.parseLong(required(values, "startedAt")),
                     Long.parseLong(required(values, "updatedAt")),
                     Integer.parseInt(required(values, "processId")),
@@ -85,6 +91,14 @@ final class GameRunStore {
         } catch (IllegalArgumentException failure) {
             throw new IOException("실행 상태 파일의 형식이 올바르지 않습니다", failure);
         }
+    }
+
+    /** 이전 버전이 기록한 JVM_STARTED는 같은 의미의 GAME_LAUNCH_STARTED로 읽는다. */
+    private static GameRunSnapshot.Stage parseStage(String value) {
+        if ("JVM_STARTED".equals(value)) {
+            return GameRunSnapshot.Stage.GAME_LAUNCH_STARTED;
+        }
+        return GameRunSnapshot.Stage.valueOf(value);
     }
 
     void write(GameRunSnapshot snapshot) throws IOException {

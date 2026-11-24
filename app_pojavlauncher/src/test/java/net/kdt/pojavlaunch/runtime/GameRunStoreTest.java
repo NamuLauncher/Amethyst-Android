@@ -45,8 +45,8 @@ public class GameRunStoreTest {
         GameRunRecorder recorder = new GameRunRecorder(writer);
         assertTrue(recorder.attachProcess(123, 110));
         assertEquals(123, reader.read().processId);
-        assertTrue(recorder.jvmStarted(120));
-        assertEquals(GameRunSnapshot.Stage.JVM_STARTED, reader.read().stage);
+        assertTrue(recorder.gameLaunchStarted(120));
+        assertEquals(GameRunSnapshot.Stage.GAME_LAUNCH_STARTED, reader.read().stage);
         assertTrue(recorder.firstFrame(130));
         GameRunSnapshot frame = reader.read();
         assertEquals(GameRunSnapshot.Stage.FIRST_FRAME, frame.stage);
@@ -69,7 +69,7 @@ public class GameRunStoreTest {
                     GameRunStore.create("TestRun-" + index, directory, 100)
             );
             recorder.attachProcess(123, 105);
-            recorder.jvmStarted(110);
+            recorder.gameLaunchStarted(110);
             boolean signal = index == 2;
 
             assertTrue(recorder.exited(codes[index], signal, 200));
@@ -120,18 +120,18 @@ public class GameRunStoreTest {
         assertFalse(recorder.firstFrame(110));
         assertTrue(recorder.attachProcess(123, 120));
         assertFalse(recorder.attachProcess(123, 121));
-        assertTrue(recorder.jvmStarted(130));
-        assertFalse(recorder.jvmStarted(131));
+        assertTrue(recorder.gameLaunchStarted(130));
+        assertFalse(recorder.gameLaunchStarted(131));
         assertTrue(recorder.firstFrame(140));
         assertFalse(recorder.firstFrame(141));
-        assertFalse(recorder.jvmStarted(142));
+        assertFalse(recorder.gameLaunchStarted(142));
         assertTrue(recorder.exited(0, false, 150));
 
         assertFalse(recorder.exited(9, true, 160));
         assertFalse(recorder.failed("java.lang.IllegalStateException", 170));
         assertFalse(recorder.stopped(180));
         assertFalse(recorder.attachProcess(456, 190));
-        assertFalse(recorder.jvmStarted(200));
+        assertFalse(recorder.gameLaunchStarted(200));
         assertFalse(recorder.firstFrame(210));
 
         GameRunSnapshot result = new GameRunStore(directory).read();
@@ -163,7 +163,7 @@ public class GameRunStoreTest {
         GameRunStore store = GameRunStore.create("TestRun", directory, 100);
         GameRunRecorder first = new GameRunRecorder(store);
         first.attachProcess(123, 110);
-        first.jvmStarted(120);
+        first.gameLaunchStarted(120);
         GameRunRecorder restarted = new GameRunRecorder(new GameRunStore(directory));
 
         assertThrows(IOException.class, () -> restarted.attachProcess(456, 200));
@@ -216,6 +216,27 @@ public class GameRunStoreTest {
             }
             assertThrows(invalid[0], IOException.class, store::read);
         }
+    }
+
+    @Test
+    public void legacyJvmStartedStageIsReadAsGameLaunchStarted() throws Exception {
+        File directory = temporary.newFolder("TestRun");
+        GameRunStore store = GameRunStore.create("TestRun", directory, 100);
+        GameRunRecorder recorder = new GameRunRecorder(store);
+        recorder.attachProcess(123, 110);
+        recorder.gameLaunchStarted(120);
+
+        File state = new File(directory, "state.properties");
+        Properties values = new Properties();
+        try (InputStream input = Files.newInputStream(state.toPath())) {
+            values.load(input);
+        }
+        values.setProperty("stage", "JVM_STARTED");
+        try (OutputStream output = Files.newOutputStream(state.toPath())) {
+            values.store(output, null);
+        }
+
+        assertEquals(GameRunSnapshot.Stage.GAME_LAUNCH_STARTED, store.read().stage);
     }
 
     @Test

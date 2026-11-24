@@ -32,13 +32,13 @@ public final class GameRunElapsedTimeTest {
         assertTrue(recorder.checkpoint(101_000));
         assertNull(store.read().jvmElapsedMillis);
         elapsed.set(20_000);
-        assertTrue(recorder.jvmStarted(102_000));
+        assertTrue(recorder.gameLaunchStarted(102_000));
         assertEquals(Long.valueOf(0), store.read().jvmElapsedMillis);
 
         elapsed.set(20_900);
         assertTrue(recorder.checkpoint(1_000));
         assertEquals(Long.valueOf(900), store.read().jvmElapsedMillis);
-        assertFalse(recorder.jvmStarted(1_100));
+        assertFalse(recorder.gameLaunchStarted(1_100));
         elapsed.set(20_997);
         assertTrue(recorder.firstFrame(2_000_000));
         assertEquals(Long.valueOf(997), store.read().jvmElapsedMillis);
@@ -56,7 +56,7 @@ public final class GameRunElapsedTimeTest {
         assertFalse(recorder.checkpoint(400));
         assertFalse(recorder.stopped(500));
         assertFalse(recorder.firstFrame(600));
-        assertFalse(recorder.jvmStarted(700));
+        assertFalse(recorder.gameLaunchStarted(700));
         assertFalse(recorder.failed("java.lang.IllegalStateException", 800));
         assertEquals(Long.valueOf(1299), store.read().jvmElapsedMillis);
         assertEquals(300, store.read().updatedAt);
@@ -68,7 +68,7 @@ public final class GameRunElapsedTimeTest {
         GameRunStore store = GameRunStore.create("TestFailure", directory, 100);
         AtomicLong elapsed = new AtomicLong(1000);
         GameRunRecorder recorder = new GameRunRecorder(store, elapsed::get);
-        recorder.jvmStarted(200);
+        recorder.gameLaunchStarted(200);
 
         long failureTick = 1250;
         elapsed.set(9000);
@@ -94,7 +94,7 @@ public final class GameRunElapsedTimeTest {
         GameRunStore stoppedStore = GameRunStore.create("TestStopped", stoppedDirectory, 100);
         AtomicLong elapsed = new AtomicLong(10_000);
         GameRunRecorder stopped = new GameRunRecorder(stoppedStore, elapsed::get);
-        stopped.jvmStarted(200);
+        stopped.gameLaunchStarted(200);
         elapsed.set(10_123);
         stopped.stopped(250);
         assertEquals(Long.valueOf(123), stoppedStore.read().jvmElapsedMillis);
@@ -111,7 +111,7 @@ public final class GameRunElapsedTimeTest {
         GameRunStore store = GameRunStore.create("TestRun", directory, 100);
         AtomicLong elapsed = new AtomicLong(10_000);
         GameRunRecorder recorder = new GameRunRecorder(store, elapsed::get);
-        recorder.jvmStarted(200);
+        recorder.gameLaunchStarted(200);
         elapsed.set(10_800);
         recorder.checkpoint(300);
         Files.move(directory.toPath(), moved.toPath());
@@ -140,7 +140,7 @@ public final class GameRunElapsedTimeTest {
         Files.move(directory.toPath(), moved.toPath());
         Files.write(directory.toPath(), new byte[0]);
 
-        assertThrows(IOException.class, () -> recorder.jvmStarted(200));
+        assertThrows(IOException.class, () -> recorder.gameLaunchStarted(200));
         assertEquals(Long.valueOf(0), recorder.snapshot().jvmElapsedMillis);
 
         Files.delete(directory.toPath());
@@ -148,7 +148,7 @@ public final class GameRunElapsedTimeTest {
         assertNull(store.read().jvmElapsedMillis);
         elapsed.set(10_250);
         assertTrue(recorder.checkpoint(300));
-        assertEquals(GameRunSnapshot.Stage.JVM_STARTED, store.read().stage);
+        assertEquals(GameRunSnapshot.Stage.GAME_LAUNCH_STARTED, store.read().stage);
         assertEquals(Long.valueOf(200), store.read().jvmStartedAt);
         assertEquals(Long.valueOf(250), store.read().jvmElapsedMillis);
     }
@@ -160,7 +160,7 @@ public final class GameRunElapsedTimeTest {
         GameRunStore store = GameRunStore.create("TestRun", directory, 100);
         AtomicLong elapsed = new AtomicLong(10_000);
         GameRunRecorder recorder = new GameRunRecorder(store, elapsed::get);
-        recorder.jvmStarted(200);
+        recorder.gameLaunchStarted(200);
         elapsed.set(10_300);
         recorder.checkpoint(300);
         Files.move(directory.toPath(), moved.toPath());
@@ -188,7 +188,7 @@ public final class GameRunElapsedTimeTest {
         File directory = temporary.newFolder("TestRun");
         GameRunStore store = GameRunStore.create("TestRun", directory, 100);
         GameRunRecorder recorder = new GameRunRecorder(store, () -> 1000);
-        recorder.jvmStarted(200);
+        recorder.gameLaunchStarted(200);
         File state = new File(directory, "state.properties");
         Properties values = new Properties();
         try (InputStream input = Files.newInputStream(state.toPath())) {

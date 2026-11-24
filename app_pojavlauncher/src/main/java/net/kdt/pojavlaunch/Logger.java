@@ -17,6 +17,12 @@ public class Logger {
     /** Reset the log file, effectively erasing any previous logs */
     public static native void begin(String logFilePath);
 
+    /**
+     * 게임 출력 파이프를 닫는다. C 표준 입출력 버퍼를 비우고 stdout·stderr를 원래 대상으로 되돌린 뒤
+     * 로그 스레드가 남은 출력을 모두 기록하고 끝날 때까지 기다린다. 한 번만 동작한다.
+     */
+    public static native void endLogging();
+
     /** Add a listener for the logfile, ask the native side for a listener if needed */
     public static void addLogListener(eventLogListener logListeners) {
         boolean wasEmpty = Logger.logListeners.isEmpty();

@@ -22,7 +22,7 @@ public final class RuntimeProbeService extends Service {
     static final String EXTRA_EXIT_CODE = "exitCode";
     static final String EXTRA_SIGNAL = "signal";
     static final String ATTACH = "attach";
-    static final String JVM_STARTED = "jvmStarted";
+    static final String GAME_LAUNCH_STARTED = "gameLaunchStarted";
     static final String FIRST_FRAME = "firstFrame";
     static final String EXIT = "exit";
     static final String FAILURE = "failure";
@@ -52,8 +52,8 @@ public final class RuntimeProbeService extends Service {
                 Process.killProcess(Process.myPid());
             } else if (ATTACH.equals(operation)) {
                 RuntimeGameSession.attach(this, intent.getStringExtra(EXTRA_RUN_ID), directory);
-            } else if (JVM_STARTED.equals(operation)) {
-                RuntimeGameSession.onJvmStarted();
+            } else if (GAME_LAUNCH_STARTED.equals(operation)) {
+                RuntimeGameSession.onGameLaunchStarted();
             } else if (FIRST_FRAME.equals(operation)) {
                 RuntimeGameSession.onFirstFrame();
             } else if (EXIT.equals(operation)) {
@@ -74,7 +74,7 @@ public final class RuntimeProbeService extends Service {
                 RuntimeGameSession.onUserStop();
                 RuntimeGameSession.onFailure(new IllegalStateException("Test late failure"));
                 RuntimeGameSession.onFirstFrame();
-                RuntimeGameSession.onJvmStarted();
+                RuntimeGameSession.onGameLaunchStarted();
                 stopSelf();
                 Process.killProcess(Process.myPid());
             } else {

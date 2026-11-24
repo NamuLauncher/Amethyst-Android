@@ -345,6 +345,20 @@ public final class AmethystRuntime {
 
     /** 실행마다 다른 ID와 비어 있는 앱 내부 폴더를 지정한다. 기존 실행으로 복귀할 때는 인자 없는 오버로드를 쓴다. */
     public static void launchGame(Activity activity, String runId, File runDirectory) throws IOException {
+        launchGame(activity, runId, runDirectory, null);
+    }
+
+    /**
+     * authYou가 있으면 게임 프로세스에서 AuthYou 인증 세션을 열고 게임을 실행한다.
+     * 호스트는 실행 전에 게임 폴더의 ay/config.json을 준비하고, 앱 jniLibs에
+     * libauthyou_launcher.so와 libauthyou.so를 넣어야 한다. 시작 전 단계가 실패하면 종료 코드 91로 기록된다.
+     */
+    public static void launchGame(
+            Activity activity,
+            String runId,
+            File runDirectory,
+            AuthYouLaunchRequest authYou
+    ) throws IOException {
         if (isGameRunning(activity)) {
             throw new IllegalStateException("게임이 이미 실행 중입니다");
         }
@@ -359,6 +373,9 @@ public final class AmethystRuntime {
         Intent intent = new Intent(activity, MainActivity.class)
                 .putExtra(EXTRA_RUN_ID, runId)
                 .putExtra(RuntimeGameSession.EXTRA_RUN_DIRECTORY, directory.getAbsolutePath());
+        if (authYou != null) {
+            authYou.writeTo(intent);
+        }
         try {
             activity.startActivity(intent);
         } catch (RuntimeException failure) {
@@ -374,6 +391,11 @@ public final class AmethystRuntime {
 
     public static File gameLogFile(File runDirectory) {
         return new GameRunStore(runDirectory).logFile();
+    }
+
+    /** AuthYou 실행 경로에서 앱 로그로 전달된 텍스트(AuthYou 로그, 필터를 통과한 게임 출력, 종료 코드)를 기록한 파일. */
+    public static File gameAuthYouLogFile(File runDirectory) {
+        return new GameRunStore(runDirectory).authYouLogFile();
     }
 
     /** Java 실패의 타입과 호출 프레임만 기록하며 예외 메시지·JVM 인자를 포함하지 않는다. */

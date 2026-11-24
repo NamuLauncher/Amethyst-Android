@@ -29,6 +29,7 @@ public final class RuntimeGameSession {
     private static GameRunRecorder recorder;
     private static boolean loggingStarted;
     private static boolean hostRequested;
+    private static AuthYouLaunchRequest authYouRequest;
     private static final long CHECKPOINT_INTERVAL_MILLIS = 30_000;
     private static ScheduledExecutorService checkpoints;
 
@@ -36,6 +37,11 @@ public final class RuntimeGameSession {
 
     public static void initialize(Activity activity) throws IOException {
         Intent intent = activity.getIntent();
+        try {
+            authYouRequest = AuthYouLaunchRequest.readFrom(intent);
+        } catch (IllegalArgumentException failure) {
+            throw new IOException(failure.getMessage(), failure);
+        }
         String runId = intent.getStringExtra(AmethystRuntime.EXTRA_RUN_ID);
         String directory = intent.getStringExtra(EXTRA_RUN_DIRECTORY);
         if (runId == null && directory == null) {
@@ -93,7 +99,17 @@ public final class RuntimeGameSession {
         return recorder != null;
     }
 
+    /** AuthYou 실행 경로로 요청됐으면 세션 인자를, 기본 Amethyst 실행 경로면 null을 반환한다. */
+    public static synchronized AuthYouLaunchRequest authYouRequest() {
+        return authYouRequest;
+    }
+
     public static synchronized void beginLogging(File fallbackLog) throws IOException {
+        // AuthYou 실행 경로에서는 AuthYou Go가 자체 출력 처리 함수로 출력 파이프를 초기화한다.
+        // 앱 로그로 전달된 텍스트는 AuthYou 로그 리스너가 latest.log에 기록한다.
+        if (authYouRequest != null) {
+            return;
+        }
         if (recorder != null && loggingStarted) {
             return;
         }
@@ -107,6 +123,14 @@ public final class RuntimeGameSession {
         }
     }
 
+    /** AuthYou 실행 경로의 로그 파일. 실행 기록이 있으면 실행 기록 폴더, 없으면 fallbackDirectory의 latest.log다. */
+    public static synchronized File authYouLogFile(File fallbackDirectory) {
+        if (recorder == null) {
+            return new File(fallbackDirectory, GameRunStore.AUTHYOU_LOG_FILE_NAME);
+        }
+        return store.authYouLogFile();
+    }
+
     public static synchronized String errorFileArgument() {
         if (recorder == null) {
             return null;
@@ -114,8 +138,8 @@ public final class RuntimeGameSession {
         return "-XX:ErrorFile=" + store.errorFilePattern().getAbsolutePath();
     }
 
-    public static synchronized void onJvmStarted() {
-        update(() -> recorder.jvmStarted(System.currentTimeMillis()));
+    public static synchronized void onGameLaunchStarted() {
+        update(() -> recorder.gameLaunchStarted(System.currentTimeMillis()));
         startCheckpoints();
     }
 
