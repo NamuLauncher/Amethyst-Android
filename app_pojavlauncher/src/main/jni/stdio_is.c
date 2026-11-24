@@ -83,12 +83,20 @@ void amethyst_write_crash_log(const char *text, size_t length) {
     write_log(text, length, ANDROID_LOG_ERROR);
 }
 
-static void record_game_line(const char *line, size_t length, bool oversized) {
+static void emit_game_line(char *line, size_t length, bool oversized) {
     if (oversized) {
         static const char message[] = "[Amethyst] Game log line exceeded 64 KiB\n";
         amethyst_write_log(message, sizeof(message) - 1);
-    } else {
-        amethyst_write_log(line, length);
+        return;
+    }
+
+    line[length] = '\n';
+    amethyst_write_log(line, length + 1);
+    if (output_handler != NULL) {
+        if (length > 0 && line[length - 1] == '\r') {
+            length--;
+        }
+        output_handler(line, length);
     }
 }
 
@@ -138,28 +146,20 @@ static void *logger_thread(void *unused) {
 
         for (ssize_t index = 0; index < count; index++) {
             char byte = chunk[index];
-            if (used < MAX_GAME_LOG_LINE_BYTES || (used == MAX_GAME_LOG_LINE_BYTES && byte == '\n')) {
+            if (byte == '\n') {
+                emit_game_line(line, used, oversized);
+                used = 0;
+                oversized = false;
+            } else if (used < MAX_GAME_LOG_LINE_BYTES) {
                 line[used++] = byte;
             } else {
                 oversized = true;
             }
-            if (byte == '\n') {
-                record_game_line(line, used, oversized);
-                used = 0;
-                oversized = false;
-            }
-        }
-        if (output_handler != NULL) {
-            output_handler(chunk, (size_t)count);
         }
     }
 
     if (used > 0) {
-        line[used++] = '\n';
-        record_game_line(line, used, oversized);
-    }
-    if (output_handler != NULL) {
-        output_handler(NULL, 0);
+        emit_game_line(line, used, oversized);
     }
     close(pfd[0]);
     pfd[0] = -1;
@@ -173,7 +173,7 @@ static void close_if_open(int* fd) {
     }
 }
 
-int amethyst_begin_output(amethyst_output_handler handler) {
+int amethyst_begin_line_output(amethyst_output_handler handler) {
     if(output_started) {
         return EALREADY;
     }
@@ -286,7 +286,7 @@ JNIEXPORT void JNICALL
 Java_net_kdt_pojavlaunch_Logger_beginOutput(JNIEnv *env, jclass clazz) {
     (void)env;
     (void)clazz;
-    int result = amethyst_begin_output(NULL);
+    int result = amethyst_begin_line_output(NULL);
     if (result != 0 && result != EALREADY) {
         __android_log_print(ANDROID_LOG_ERROR, "AmethystGame", "Redirect game output failed: %s", strerror(result));
     }
