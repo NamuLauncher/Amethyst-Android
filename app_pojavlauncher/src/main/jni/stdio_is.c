@@ -173,62 +173,73 @@ static void close_if_open(int* fd) {
     }
 }
 
+static void restore_output_fd(int original_fd, int stream_fd) {
+    if (TEMP_FAILURE_RETRY(dup2(original_fd, stream_fd)) < 0) {
+        __android_log_print(ANDROID_LOG_ERROR, "AmethystGame", "Restore output FD %d failed: %s",
+                            stream_fd, strerror(errno));
+    }
+}
+
 int amethyst_begin_line_output(amethyst_output_handler handler) {
-    if(output_started) {
+    if (output_started) {
         return EALREADY;
     }
 
-    setvbuf(stdout, 0, _IOLBF, 0); // make stdout line-buffered
-    setvbuf(stderr, 0, _IONBF, 0); // make stderr unbuffered
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
 
-    if(pipe2(pfd, O_CLOEXEC) != 0) {
-        int error = errno;
-        pfd[0] = -1;
-        pfd[1] = -1;
-        return error;
+    int error;
+    // 파이프를 열기 전에 원래 FD를 복제해야 닫힌 표준 FD가 파이프로 재사용되지 않는다.
+    original_output_fds[0] = TEMP_FAILURE_RETRY(fcntl(STDOUT_FILENO, F_DUPFD_CLOEXEC, STDERR_FILENO + 1));
+    if (original_output_fds[0] < 0) {
+        error = errno;
+        goto cleanup;
+    }
+    original_output_fds[1] = TEMP_FAILURE_RETRY(fcntl(STDERR_FILENO, F_DUPFD_CLOEXEC, STDERR_FILENO + 1));
+    if (original_output_fds[1] < 0) {
+        error = errno;
+        goto cleanup;
     }
 
+    if (pipe2(pfd, O_CLOEXEC) != 0) {
+        error = errno;
+        goto cleanup;
+    }
     drain_fd = eventfd(0, EFD_CLOEXEC);
     if (drain_fd < 0) {
-        int error = errno;
-        close_if_open(&pfd[0]);
-        close_if_open(&pfd[1]);
-        return error;
+        error = errno;
+        goto cleanup;
     }
 
-    // endLogging()에서 FD 1·2를 원래 대상으로 되돌리기 위해 보관한다.
-    original_output_fds[0] = fcntl(STDOUT_FILENO, F_DUPFD_CLOEXEC, 0);
-    original_output_fds[1] = fcntl(STDERR_FILENO, F_DUPFD_CLOEXEC, 0);
-    if(original_output_fds[0] == -1 || original_output_fds[1] == -1) {
-        int error = errno;
-        close_if_open(&original_output_fds[0]);
-        close_if_open(&original_output_fds[1]);
-        close_if_open(&pfd[0]);
-        close_if_open(&pfd[1]);
-        close_if_open(&drain_fd);
-        return error;
+    if (TEMP_FAILURE_RETRY(dup2(pfd[1], STDOUT_FILENO)) < 0) {
+        error = errno;
+        goto cleanup;
     }
-
-    /* redirect stdout and stderr */
-    dup2(pfd[1], 1);
-    dup2(pfd[1], 2);
+    if (TEMP_FAILURE_RETRY(dup2(pfd[1], STDERR_FILENO)) < 0) {
+        error = errno;
+        goto restore_stdout;
+    }
 
     output_handler = handler;
-    int result = pthread_create(&logger, 0, logger_thread, 0);
-    if(result != 0) {
-        dup2(original_output_fds[0], 1);
-        dup2(original_output_fds[1], 2);
-        close_if_open(&original_output_fds[0]);
-        close_if_open(&original_output_fds[1]);
-        close_if_open(&pfd[0]);
-        close_if_open(&pfd[1]);
-        close_if_open(&drain_fd);
-        return result;
+    error = pthread_create(&logger, NULL, logger_thread, NULL);
+    if (error != 0) {
+        restore_output_fd(original_output_fds[1], STDERR_FILENO);
+        goto restore_stdout;
     }
 
     logger_running = true;
     output_started = true;
     return 0;
+
+restore_stdout:
+    restore_output_fd(original_output_fds[0], STDOUT_FILENO);
+cleanup:
+    close_if_open(&original_output_fds[0]);
+    close_if_open(&original_output_fds[1]);
+    close_if_open(&pfd[0]);
+    close_if_open(&pfd[1]);
+    close_if_open(&drain_fd);
+    return error;
 }
 
 void amethyst_end_logging(void) {
@@ -240,8 +251,8 @@ void amethyst_end_logging(void) {
     fflush(stdout);
     fflush(stderr);
 
-    dup2(original_output_fds[0], 1);
-    dup2(original_output_fds[1], 2);
+    restore_output_fd(original_output_fds[0], STDOUT_FILENO);
+    restore_output_fd(original_output_fds[1], STDERR_FILENO);
     close_if_open(&original_output_fds[0]);
     close_if_open(&original_output_fds[1]);
 
