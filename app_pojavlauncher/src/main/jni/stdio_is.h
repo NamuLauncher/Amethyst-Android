@@ -19,7 +19,7 @@ typedef void (*amethyst_output_handler)(const char *line, size_t length);
 
 // stdout·stderr를 파이프로 연결해 조립한 줄을 handler에 전달한다. handler는 필수다.
 // 성공하면 0, 실패하면 errno 값을 반환한다.
-int amethyst_begin_output_with_line_handler(amethyst_output_handler handler);
+int amethyst_begin_line_output(amethyst_output_handler handler);
 
 // C 표준 입출력 버퍼를 비우고 FD 1·2를 복구한 뒤 로그 스레드가 남은 출력을 넘기고 끝날 때까지 기다린다.
 void amethyst_end_logging(void);

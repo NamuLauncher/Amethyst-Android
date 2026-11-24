@@ -188,7 +188,7 @@ static void restore_output_fd(int original_fd, int stream_fd) {
     }
 }
 
-int amethyst_begin_output_with_line_handler(amethyst_output_handler handler) {
+int amethyst_begin_line_output(amethyst_output_handler handler) {
     if (handler == NULL) {
         return EINVAL;
     }
@@ -308,7 +308,7 @@ JNIEXPORT void JNICALL
 Java_net_kdt_pojavlaunch_Logger_beginOutput(JNIEnv *env, jclass clazz) {
     (void)env;
     (void)clazz;
-    int result = amethyst_begin_output_with_line_handler(write_game_line);
+    int result = amethyst_begin_line_output(write_game_line);
     if (result != 0 && result != EALREADY) {
         __android_log_print(ANDROID_LOG_ERROR, "AmethystGame", "Redirect game output failed: %s", strerror(result));
     }
