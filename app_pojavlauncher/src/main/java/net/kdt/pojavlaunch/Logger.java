@@ -33,11 +33,16 @@ public final class Logger {
         appendUtf8((text + '\n').getBytes(StandardCharsets.UTF_8));
     }
 
-    public static synchronized void open(File file) {
-        if (logFile == null && openLogFile(file.getAbsolutePath())) {
-            logFile = file;
-            startReading();
+    public static synchronized boolean open(File file) {
+        if (logFile != null) {
+            return logFile.equals(file);
         }
+        if (!openLogFile(file.getAbsolutePath())) {
+            return false;
+        }
+        logFile = file;
+        startReading();
+        return true;
     }
 
     public static File file() {

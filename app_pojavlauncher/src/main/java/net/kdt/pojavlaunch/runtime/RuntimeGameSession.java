@@ -47,7 +47,9 @@ public final class RuntimeGameSession {
             throw new IOException("실행 기록 정보가 불완전합니다");
         }
         attach(activity, runId, new File(directory));
-        Logger.open(store.logFile());
+        if (!Logger.open(store.logFile())) {
+            throw new IOException("Failed to open runtime.log");
+        }
         try {
             authYouRequest = AuthYouLaunchRequest.readFrom(intent);
         } catch (IllegalArgumentException failure) {
