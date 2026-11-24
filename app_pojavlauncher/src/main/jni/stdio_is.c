@@ -90,6 +90,12 @@ static void emit_game_line(char *line, size_t length, bool oversized) {
         return;
     }
 
+    // 구형 Minecraft는 기본 로그 레벨에서도 토큰이 들어 있는 세션 ID를 출력한다.
+    static const char session_id_message[] = "Session ID is";
+    if (memmem(line, length, session_id_message, sizeof(session_id_message) - 1) != NULL) {
+        return;
+    }
+
     line[length] = '\n';
     amethyst_write_log(line, length + 1);
     if (output_handler != NULL) {
@@ -295,11 +301,15 @@ Java_net_kdt_pojavlaunch_Logger_openLogFile(JNIEnv *env, jclass clazz, jstring p
 
 JNIEXPORT void JNICALL
 Java_net_kdt_pojavlaunch_Logger_beginOutput(JNIEnv *env, jclass clazz) {
-    (void)env;
     (void)clazz;
     int result = amethyst_begin_line_output(NULL);
     if (result != 0 && result != EALREADY) {
-        __android_log_print(ANDROID_LOG_ERROR, "AmethystGame", "Redirect game output failed: %s", strerror(result));
+        jclass exception = (*env)->FindClass(env, "java/io/IOException");
+        if (exception != NULL) {
+            char message[160];
+            snprintf(message, sizeof(message), "Redirect game output failed: %s", strerror(result));
+            (*env)->ThrowNew(env, exception, message);
+        }
     }
 }
 

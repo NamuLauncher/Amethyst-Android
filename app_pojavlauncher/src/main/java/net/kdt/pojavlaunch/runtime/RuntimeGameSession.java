@@ -106,7 +106,7 @@ public final class RuntimeGameSession {
         return authYouRequest;
     }
 
-    public static synchronized void beginLogging(File fallbackLog) {
+    public static synchronized void beginLogging(File fallbackLog) throws IOException {
         if (loggingStarted) {
             return;
         }
