@@ -609,6 +609,11 @@ public final class Tools {
             Tools.runOnUiThread(() -> {
                 Tools.dialog(activity, activity.getString(R.string.global_warning), activity.getString(R.string.controllableFound));
             });
+            if (Logger.file() == null) {
+                Log.w(TAG, "Skipping Controllable mitigation because the runtime log is unavailable");
+                return;
+            }
+
             Thread mitigationThread = new Thread(() -> {
                 // This is total garbage but it seems to be the best jank for the job
                 Log.i(TAG, "Controllable detected! Starting mitigation thread");
