@@ -44,7 +44,7 @@ public final class Logger {
         return logFile;
     }
 
-    public static native void beginOutput() throws IOException;
+    public static native void beginOutput();
 
     public static native void endLogging();
 

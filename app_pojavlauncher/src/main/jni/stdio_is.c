@@ -301,15 +301,11 @@ Java_net_kdt_pojavlaunch_Logger_openLogFile(JNIEnv *env, jclass clazz, jstring p
 
 JNIEXPORT void JNICALL
 Java_net_kdt_pojavlaunch_Logger_beginOutput(JNIEnv *env, jclass clazz) {
+    (void)env;
     (void)clazz;
     int result = amethyst_begin_line_output(NULL);
     if (result != 0 && result != EALREADY) {
-        jclass exception = (*env)->FindClass(env, "java/io/IOException");
-        if (exception != NULL) {
-            char message[160];
-            snprintf(message, sizeof(message), "Redirect game output failed: %s", strerror(result));
-            (*env)->ThrowNew(env, exception, message);
-        }
+        __android_log_print(ANDROID_LOG_ERROR, "AmethystGame", "Redirect game output failed: %s", strerror(result));
     }
 }
 

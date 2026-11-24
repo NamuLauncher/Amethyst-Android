@@ -81,12 +81,7 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
         setContentView(R.layout.activity_java_gui_launcher);
 
         Logger.open(new File(Tools.DIR_GAME_HOME, "latestlog.txt"));
-        try {
-            Logger.beginOutput();
-        } catch (IOException failure) {
-            Tools.showError(this, failure, true);
-            return;
-        }
+        Logger.beginOutput();
         MainActivity.GLOBAL_CLIPBOARD = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
         mTouchCharInput = findViewById(R.id.awt_touch_char);
         mTouchCharInput.setCharacterSender(new AwtCharSender());
